@@ -1,0 +1,3076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>WASM C Compiler & Disassembler + Unicorn Engine Debugger</title>
+
+<!-- CodeMirror -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/theme/dracula.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/mode/clike/clike.min.js"></script>
+
+<!-- External Libraries -->
+<script src="externals/jquery-3.1.1.min.js"></script>
+<script src="externals/require.min.js"></script>
+<script src="externals/split.min.js"></script>
+
+<!-- Unicorn Engine -->
+<script src="externals/unicorn-x86.min.js"></script>
+
+<!-- Capstone Disassembler -->
+<script src="externals/capstone-x86.min.js"></script>
+
+<!-- Keystone Assembler -->
+<script src="externals/keystone-x86.min.js"></script>
+
+<!-- Original demo styles for proper highlighting -->
+<link rel="stylesheet" href="demo.css">
+
+<style>
+ /* Retro Theme Variables */
+ :root {
+   --bg-primary: #000000;
+   --bg-secondary: #1a1a1a;
+   --bg-tertiary: #333333;
+   --text-primary: #00ff00;
+   --text-secondary: #ffff00;
+   --accent-green: #00ff00;
+   --accent-red: #ff0000;
+   --accent-yellow: #ffff00;
+   --accent-pink: #ff00ff;
+   --accent-orange: #ffa500;
+   --accent-cyan: #00ffff;
+   --border-color: #00ff00;
+   --shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+   --shadow-hover: 0 0 20px rgba(0, 255, 0, 0.8);
+   --retro-glow: 0 0 1px currentColor;
+ }
+
+ /* Light Retro Theme (Green on White) */
+ [data-theme="light"] {
+   --bg-primary: #f0f0f0;
+   --bg-secondary: #e0e0e0;
+   --bg-tertiary: #d0d0d0;
+   --text-primary: #006600;
+   --text-secondary: #cc6600;
+   --accent-green: #006600;
+   --accent-red: #cc0000;
+   --accent-yellow: #cc6600;
+   --accent-pink: #cc0099;
+   --accent-orange: #ff6600;
+   --accent-cyan: #0066cc;
+   --border-color: #006600;
+   --shadow: 0 0 10px rgba(0, 102, 0, 0.3);
+   --shadow-hover: 0 0 20px rgba(0, 102, 0, 0.5);
+   --retro-glow: 0 0 3px currentColor;
+ }
+
+ html,body{margin:0;padding:0;background:var(--bg-primary);color:var(--text-primary);
+           font-family:'Courier New', 'Lucida Console', monospace;transition:all 0.3s ease;
+           text-shadow:var(--retro-glow)}
+ body{display:flex;flex-direction:column;padding:0;gap:0;min-height:100vh}
+
+ /* Retro Header Styles */
+ .app-header{background:var(--bg-secondary);
+             padding:15px;border-bottom:2px solid var(--accent-green);
+             box-shadow:var(--shadow);position:sticky;top:0;z-index:100;
+             border-top:1px solid var(--accent-green)}
+ .header-content{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto}
+ .app-title{margin:0;font-size:24px;font-weight:bold;color:var(--accent-green);display:flex;align-items:center;gap:10px;
+           text-shadow:var(--retro-glow);letter-spacing:2px}
+ .title-icon{font-size:28px;animation:blink 1s infinite}
+ .app-subtitle{margin:5px 0 0 0;color:var(--text-secondary);font-size:12px;
+               text-transform:uppercase;letter-spacing:1px;text-shadow:var(--retro-glow)}
+ .header-controls{display:flex;gap:10px}
+ .theme-toggle,.help-btn{background:var(--bg-tertiary);color:var(--accent-green);border:2px solid var(--accent-green);
+                        padding:6px 12px;border-radius:0;cursor:pointer;transition:all 0.3s ease;
+                        text-shadow:var(--retro-glow);font-family:inherit;text-transform:uppercase}
+ .theme-toggle:hover,.help-btn:hover{background:var(--accent-green);color:var(--bg-primary);
+                                     box-shadow:var(--shadow-hover)}
+
+ @keyframes blink{0%{opacity:1}50%{opacity:0.3}100%{opacity:1}}
+
+ /* Main Content Container */
+ .main-content{padding:15px;max-width:1200px;margin:0 auto;width:100%;
+               display:flex;flex-direction:column}
+ 
+ /* Retro Floating Action Buttons */
+ .floating-actions{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:10px;z-index:1000}
+ .fab{width:50px;height:50px;border-radius:0;border:2px solid var(--accent-green);font-size:20px;cursor:pointer;
+      box-shadow:var(--shadow);transition:all 0.3s ease;display:flex;align-items:center;justify-content:center;
+      background:var(--bg-secondary);color:var(--accent-green);text-shadow:var(--retro-glow)}
+ .fab:hover{background:var(--accent-green);color:var(--bg-primary);box-shadow:var(--shadow-hover)}
+ .fab-compile{border-color:var(--accent-green)}
+ .fab-debug{border-color:var(--accent-orange);color:var(--accent-orange)}
+ .fab-debug:hover{background:var(--accent-orange)}
+ .fab-step{border-color:var(--accent-pink);color:var(--accent-pink)}
+ .fab-step:hover{background:var(--accent-pink)}
+
+ /* Retro Section Styles with Proper Space Management */
+ .collapsible-section{border:2px solid var(--border-color);margin-bottom:20px;border-radius:0;
+                      overflow:hidden;box-shadow:var(--shadow);transition:all 0.3s ease;
+                      background:var(--bg-secondary)}
+ .collapsible-section:hover{box-shadow:var(--shadow-hover)}
+ .collapsible-header{background:var(--bg-tertiary);
+                     padding:12px 15px;cursor:pointer;user-select:none;display:flex;justify-content:space-between;
+                     align-items:center;font-weight:bold;font-size:14px;transition:all 0.3s ease;
+                     color:var(--accent-green);text-shadow:var(--retro-glow);text-transform:uppercase;
+                     letter-spacing:1px;border-bottom:1px solid var(--accent-green)}
+ .collapsible-header:hover{background:var(--accent-green);color:var(--bg-primary);
+                           text-shadow:none}
+ .collapsible-content{background:var(--bg-primary);transition:opacity 0.3s ease, transform 0.3s ease}
+ .collapsible-content.collapsed{display:none}
+ .collapsible-content:not(.collapsed){display:block}
+ .collapse-arrow{transition:transform 0.3s ease;font-size:14px;font-weight:bold}
+ .collapsed .collapse-arrow{transform:rotate(-90deg)}
+ 
+ /* Retro Scrollable Content Areas with Natural Height */
+ .section-content{scrollbar-width:thin;scrollbar-color:var(--accent-green) var(--bg-secondary)}
+ 
+ /* Allow sections to expand naturally - no fixed heights */
+ .section-content.code-development{min-height:200px}
+ .section-content.testing-framework{min-height:150px}
+ .section-content.cpu-state{min-height:200px}
+ .section-content::-webkit-scrollbar{width:12px}
+ .section-content::-webkit-scrollbar-track{background:var(--bg-secondary);border:1px solid var(--border-color)}
+ .section-content::-webkit-scrollbar-thumb{background:var(--accent-green);border-radius:0;
+                                           border:1px solid var(--bg-primary)}
+ .section-content::-webkit-scrollbar-thumb:hover{background:var(--accent-yellow)}
+ .section-content::-webkit-scrollbar-corner{background:var(--bg-secondary)}
+ 
+ /* Retro scrollbar for all elements */
+ *::-webkit-scrollbar{width:12px;height:12px}
+ *::-webkit-scrollbar-track{background:var(--bg-secondary);border:1px solid var(--border-color)}
+ *::-webkit-scrollbar-thumb{background:var(--accent-green);border-radius:0;border:1px solid var(--bg-primary)}
+ *::-webkit-scrollbar-thumb:hover{background:var(--accent-yellow)}
+ *::-webkit-scrollbar-corner{background:var(--bg-secondary)}
+
+ /* Retro Status Indicators */
+ .status-indicator{display:inline-block;width:8px;height:8px;border-radius:0;margin-right:8px;
+                   animation:blink 1s infinite;border:1px solid currentColor}
+ .status-success{background:var(--accent-green);border-color:var(--accent-green)}
+ .status-error{background:var(--accent-red);border-color:var(--accent-red)}
+ .status-warning{background:var(--accent-yellow);border-color:var(--accent-yellow)}
+ .status-info{background:var(--text-secondary);border-color:var(--text-secondary)}
+
+ /* Retro Editor Container */
+ .editor-container{height:200px;border:2px solid var(--border-color);resize:vertical;overflow-y:auto;
+                   border-radius:0;box-shadow:var(--shadow);transition:all 0.3s ease;position:relative;
+                   background:var(--bg-secondary);min-height:150px}
+ .editor-container:hover{box-shadow:var(--shadow-hover)}
+ .editor-container::before{content:attr(data-status);position:absolute;top:2px;right:5px;
+                          z-index:10;font-size:10px;padding:2px 4px;border-radius:0;
+                          background:var(--bg-tertiary);color:var(--accent-green);
+                          text-shadow:var(--retro-glow);text-transform:uppercase}
+ .CodeMirror{width:100%;height:100%;font-family:'Courier New', 'Lucida Console', monospace;font-size:13px;
+             border-radius:0;background:var(--bg-primary)!important;color:var(--text-primary)!important}
+ .step-highlight{background:rgba(0,255,0,.2)!important}
+ .line-highlight{background:rgba(0,255,0,.2)!important}
+ 
+ /* Ensure test results don't get cut off */
+ #test-results{min-height:100px!important}
+
+ /* Responsive Three-Column Layout */
+ .three-column-layout{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-bottom:15px}
+ @media (max-width: 1024px){.three-column-layout{grid-template-columns:1fr 1fr}}
+ @media (max-width: 768px){.three-column-layout{grid-template-columns:1fr}}
+ 
+ /* Retro Resizable Panels */
+ .resizable-panel{position:relative;min-width:200px}
+ .resize-handle{position:absolute;top:0;right:-5px;width:10px;height:100%;
+                cursor:col-resize;background:transparent;z-index:10}
+ .resize-handle:hover{background:var(--accent-green);box-shadow:var(--retro-glow)}
+
+ /* Retro Button Styles */
+ .button-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:15px}
+ button{background:var(--bg-tertiary);color:var(--accent-green);border:2px solid var(--accent-green);
+        padding:8px 12px;cursor:pointer;border-radius:0;font-size:12px;transition:all 0.3s ease;
+        box-shadow:var(--shadow);font-weight:bold;text-transform:uppercase;letter-spacing:1px;
+        font-family:inherit;text-shadow:var(--retro-glow)}
+ button:hover{background:var(--accent-green);color:var(--bg-primary);box-shadow:var(--shadow-hover);
+              text-shadow:none}
+ button:active{transform:none}
+
+ /* Retro Control Button Styles */
+ .control-btn{background:var(--bg-tertiary);color:var(--accent-orange);border-color:var(--accent-orange)}
+ .control-btn:hover{background:var(--accent-orange);color:var(--bg-primary)}
+
+ /* Progress Bar */
+ .progress-container{background:var(--bg-secondary);border-radius:10px;overflow:hidden;margin:10px 0}
+ .progress-bar{height:8px;background:linear-gradient(90deg, var(--accent-green) 0%, var(--accent-yellow) 100%);
+               transition:width 0.3s ease;border-radius:10px}
+
+ /* Retro Test Category Grid */
+ .test-categories-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px}
+ @media (max-width: 768px){.test-categories-grid{grid-template-columns:1fr}}
+ 
+ /* Retro Test Category Styles */
+ .test-category{background:var(--bg-secondary);padding:12px;border-radius:0;margin-bottom:10px;
+                box-shadow:var(--shadow);border:2px solid var(--border-color)}
+ .test-category h4{margin:0 0 8px 0;display:flex;align-items:center;gap:6px;
+                   color:var(--accent-green);text-shadow:var(--retro-glow);font-size:12px;
+                   text-transform:uppercase;letter-spacing:1px}
+ .test-category .category-icon{font-size:14px}
+
+ /* Retro Badge Styles */
+ .badge{display:inline-block;padding:2px 6px;border-radius:0;font-size:10px;
+        font-weight:bold;margin-left:6px;text-transform:uppercase;letter-spacing:1px;
+        border:1px solid currentColor;text-shadow:var(--retro-glow)}
+ .badge-success{background:var(--bg-primary);color:var(--accent-green);border-color:var(--accent-green)}
+ .badge-error{background:var(--bg-primary);color:var(--accent-red);border-color:var(--accent-red)}
+ .badge-warning{background:var(--bg-primary);color:var(--accent-yellow);border-color:var(--accent-yellow)}
+ .badge-info{background:var(--bg-primary);color:var(--text-secondary);border-color:var(--text-secondary)}
+
+ /* Retro Tabs for CPU State */
+ .tab-container{background:var(--bg-secondary);border-radius:0;overflow:hidden;border:2px solid var(--border-color)}
+ .tab-headers{display:flex;background:var(--bg-tertiary);border-bottom:2px solid var(--border-color)}
+ .tab-header{padding:10px 15px;cursor:pointer;background:var(--bg-tertiary);
+             border:none;color:var(--accent-green);transition:all 0.3s ease;flex:1;text-align:center;
+             font-weight:bold;text-transform:uppercase;letter-spacing:1px;font-size:11px;
+             text-shadow:var(--retro-glow);font-family:inherit;border-right:1px solid var(--border-color)}
+ .tab-header:last-child{border-right:none}
+ .tab-header.active{background:var(--accent-green);color:var(--bg-primary);text-shadow:none}
+ .tab-header:hover{background:var(--accent-yellow);color:var(--bg-primary);text-shadow:none}
+ .tab-content{padding:15px;display:none}
+ .tab-content.active{display:block}
+
+ /* Mobile Responsive */
+ @media (max-width: 768px){
+   .app-header{padding:15px 10px}
+   .header-content{flex-direction:column;gap:10px;text-align:center}
+   .main-content{padding:10px}
+   .button-row{justify-content:center}
+   .floating-actions{bottom:15px;right:15px}
+   .fab{width:50px;height:50px;font-size:20px}
+   .test-category{padding:10px}
+ }
+
+ /* Keyboard Shortcuts Help */
+ .help-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);
+             display:none;z-index:2000;justify-content:center;align-items:center}
+ .help-content{background:var(--bg-primary);padding:30px;border-radius:12px;max-width:500px;
+               max-height:80vh;overflow-y:auto;box-shadow:var(--shadow-hover)}
+ .help-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+ .help-close{background:var(--accent-red);color:var(--text-primary);border:none;
+             padding:5px 10px;border-radius:50%;cursor:pointer}
+ .shortcut-item{display:flex;justify-content:space-between;padding:8px 0;
+                border-bottom:1px solid var(--border-color)}
+ .shortcut-key{background:var(--bg-secondary);padding:4px 8px;border-radius:4px;
+               font-family:monospace;font-size:12px}
+ 
+ /* Example button styles */
+ .example-btn{background:#50fa7b;color:#282a36;font-weight:bold}
+ .example-btn:hover{background:#5af78e}
+ .advanced-btn{background:#ff79c6;color:#282a36;font-weight:bold}
+ .advanced-btn:hover{background:#ff8cc8}
+ 
+ /* Control button styles */
+ .control-btn{background:#ffb86c;color:#282a36;font-weight:bold}
+ .control-btn:hover{background:#ffc078}
+ #cpu-visual{display:flex;gap:16px;margin-top:12px}
+ #reg-box,#stack-box{background:#44475a;padding:12px;font-family:monospace;
+                     color:#f8f8f2;overflow-y:auto;max-height:400px}
+ #reg-box{flex:0 0 250px}
+ #stack-box{flex:1;border-left:1px solid #6272a4;padding-left:16px}
+ 
+ /* Collapsible sections */
+ .collapsible-section{border:1px solid #44475a;margin-bottom:24px}
+ .collapsible-header{background:#44475a;padding:8px 12px;cursor:pointer;user-select:none;
+                     display:flex;justify-content:space-between;align-items:center}
+ .collapsible-header:hover{background:#525563}
+ .collapsible-content{overflow:hidden;transition:max-height 0.3s ease}
+ .collapsible-content.collapsed{max-height:0!important}
+ .collapse-arrow{transition:transform 0.3s ease;font-size:12px}
+ .collapsed .collapse-arrow{transform:rotate(-90deg)}
+ 
+ /* Three-column layout */
+ .three-column-layout{display:flex;gap:16px;margin-bottom:16px}
+ .column{flex:1;min-height:0}
+ .column h4{margin:0 0 8px 0;color:#50fa7b;font-size:14px;font-weight:bold}
+ .column .editor-container{min-height:200px;overflow-y:auto}
+ .auto-resize{resize:none!important}
+
+ /* Assembly debugger styles - CRITICAL for highlighting */
+ .current-instruction {
+     background-color: #50fa7b !important;
+     color: #282a36 !important;
+ }
+ 
+ .row-instruction {
+     cursor: pointer;
+ }
+ 
+ .row-instruction:hover {
+     background-color: #44475a !important;
+ }
+
+ .row-instruction.hover-highlight {
+     background-color: rgba(33, 150, 243, 0.15) !important;
+     transition: all 0.15s ease-in-out;
+ }
+
+/* Hide HEX column in assembler table */
+#assembler th:nth-child(2), #assembler td:nth-child(2) {
+    display: none !important;
+}
+
+ /* C Code Line Highlighting */
+ .c-line-highlight {
+     background-color: rgba(76, 175, 80, 0.15) !important;
+     border-left: 3px solid #4CAF50 !important;
+     transition: all 0.2s ease-in-out;
+ }
+
+ .c-line-highlight-hover {
+     background-color: rgba(33, 150, 243, 0.12) !important;
+     border-left: 2px solid #2196F3 !important;
+     transition: all 0.15s ease-in-out;
+ }
+
+ .c-line-highlight-active {
+     background-color: rgba(255, 193, 7, 0.2) !important;
+     border-left: 4px solid #FFC107 !important;
+     box-shadow: inset 0 0 3px rgba(255, 193, 7, 0.3);
+     transition: all 0.2s ease-in-out;
+ }
+
+ /* C Function Highlighting - Distinct styling for entire function highlighting */
+ .c-function-highlight-active {
+     background-color: rgba(76, 175, 80, 0.2) !important;
+     border-left: 6px solid #4CAF50 !important;
+     border-right: 2px solid rgba(76, 175, 80, 0.5) !important;
+     box-shadow: inset 0 0 8px rgba(76, 175, 80, 0.3), inset 3px 0 0 rgba(76, 175, 80, 0.6);
+     transition: all 0.2s ease-in-out;
+ }
+
+ /* Assembly instruction highlighting */
+ .asm-highlight-hover {
+     background-color: rgba(33, 150, 243, 0.15) !important;
+     transition: all 0.15s ease-in-out;
+     cursor: pointer;
+ }
+
+ .asm-highlight-linked {
+     background-color: rgba(76, 175, 80, 0.2) !important;
+     border-left: 3px solid #4CAF50;
+ }
+</style>
+</head>
+<body>
+<!-- Header Section -->
+<header class="app-header">
+  <div class="header-content">
+    <h1 class="app-title">
+      <span class="title-icon">█</span>
+      C->ASSEMBLY COMPILER & DEBUGGER
+    </h1>
+    <p class="app-subtitle">WEBASSEMBLY C COMPILER WITH REAL-TIME DEBUGGING & TESTING FRAMEWORK</p>
+    <div class="header-controls">
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark/Light Theme">
+        <span id="theme-icon">🌙</span>
+      </button>
+      <button class="help-btn" onclick="showHelp()" title="Help">
+        <span>❓</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Floating Action Buttons -->
+<div class="floating-actions">
+  <button class="fab fab-compile" onclick="compileAndDisasm()" title="Compile & Disassemble">
+    🔨
+  </button>
+  <button class="fab fab-debug" onclick="debugInit()" title="Start Debug">
+    🐛
+  </button>
+  <button class="fab fab-step" onclick="step()" title="Step">
+    ▶️
+  </button>
+</div>
+
+<!-- Help Modal -->
+<div id="help-modal" class="help-modal">
+  <div class="help-content">
+    <div class="help-header">
+      <h3>Help</h3>
+      <button class="help-close" onclick="hideHelp()">×</button>
+    </div>
+    <div class="help-text">
+      <p>Use the buttons and controls to compile C code, debug assembly, and run tests.</p>
+      <p>Toggle between dark and light themes using the theme button in the header.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="main-content">
+<div class="collapsible-section">
+  <div class="collapsible-header" onclick="toggleCollapse(this)">
+    <span><strong>1. Code Development</strong></span>
+    <span class="collapse-arrow">▼</span>
+  </div>
+  <div class="collapsible-content">
+    <div class="section-content code-development" style="padding:20px">
+      <div class="three-column-layout">
+        <div class="column resizable-panel">
+          <h4>
+            <span class="status-indicator status-info" id="editor-status"></span>
+            C Code Editor
+          </h4>
+          <div class="editor-container" data-status="Ready">
+            <textarea id="editor">int add(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    int x = 5;
+    int y = 3;
+    int result = add(x, y);
+    return result;
+}</textarea>
+          </div>
+          <div class="resize-handle" data-target="editor"></div>
+        </div>
+        <div class="column resizable-panel">
+          <h4>
+            <span class="status-indicator status-warning" id="hex-status"></span>
+            Hex Output
+          </h4>
+          <div class="editor-container" data-status="Waiting">
+            <textarea id="hex-editor" readonly placeholder="Compiled machine code will appear here..."></textarea>
+          </div>
+          <div class="resize-handle" data-target="hex"></div>
+        </div>
+        <div class="column resizable-panel">
+          <h4>
+            <span class="status-indicator status-warning" id="asm-status"></span>
+            Assembly Instructions
+          </h4>
+          <div class="editor-container" data-status="Waiting" style="padding:0;background:var(--bg-primary)">
+            <div id="pane-assembler-container" style="height:100%;max-height:none;overflow-y:auto;background:var(--bg-primary);padding:8px;border-radius:0">
+              <table id="assembler" class="table table-condensed" style="width:100%;border-collapse:collapse;margin:0">
+                <thead>
+                  <tr style="background:var(--bg-secondary)">
+                    <th style="padding:6px;border:1px solid var(--border-color);color:var(--accent-green);font-size:11px">ADDRESS</th>
+                    <th style="padding:6px;border:1px solid var(--border-color);color:var(--accent-green);font-size:11px;display:none">HEX</th>
+                    <th style="padding:6px;border:1px solid var(--border-color);color:var(--accent-green);font-size:11px">ASSEMBLY</th>
+                  </tr>
+                </thead>
+                <tbody style="font-family:'Courier New',monospace;font-size:11px"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="button-row">
+        <button class="control-btn" onclick="compileAndDisasm()">
+          🔨 Compile & Disasm
+        </button>
+        <button class="control-btn" onclick="debugInit()">
+          🐛 Start Debug
+        </button>
+        <button class="control-btn" onclick="step()">
+          ▶️ Step
+        </button>
+        <button class="control-btn" onclick="resetStepper()">
+          🔄 Reset
+        </button>
+      </div>
+      
+      <div id="compile-status" style="margin-top:15px; padding:12px; background:var(--bg-secondary); border-radius:8px; display:none; box-shadow:var(--shadow);">
+        <span id="status-text">Ready to compile...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible-section">
+  <div class="collapsible-header" onclick="toggleCollapse(this)">
+    <span><strong>2. Testing Framework</strong></span>
+    <span class="collapse-arrow">▼</span>
+  </div>
+  <div class="collapsible-content collapsed">
+    <div class="section-content testing-framework" style="padding:20px">
+      <!-- Progress Indicator -->
+      <div id="test-progress" class="progress-container" style="display:none;border:2px solid var(--border-color);border-radius:0">
+        <div id="test-progress-bar" class="progress-bar" style="width:0%;height:6px;border-radius:0"></div>
+      </div>
+      
+      <!-- Test Categories Grid -->
+      <div class="test-categories-grid">
+        <!-- Unit Tests Category -->
+        <div class="test-category">
+          <h4>
+            <span class="category-icon">🧪</span>
+            Unit Tests
+            <span id="unit-test-count" class="badge badge-info">5 tests</span>
+          </h4>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+            <select id="unit-test-dropdown" onchange="updateEditorFromDropdown('unit')" style="padding:8px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; min-width:180px; font-size:12px; font-family:inherit">
+              <option value="">Select unit test...</option>
+              <option value="simple">Simple Test</option>
+              <option value="add">Add Test</option>
+              <option value="factorial">Factorial Test</option>
+              <option value="print_sign">Print Sign Test</option>
+              <option value="sum_up_to">Sum Up To Test</option>
+            </select>
+            <button class="control-btn" onclick="runSelectedTest('unit')" style="padding:6px 10px;font-size:11px">RUN</button>
+          </div>
+          <button class="control-btn" onclick="runAllTestsInCategory('unit')" style="padding:6px 10px;font-size:11px;width:100%">RUN ALL UNIT</button>
+        </div>
+        
+        <!-- Integration Tests Category -->
+        <div class="test-category">
+          <h4>
+            <span class="category-icon">🔗</span>
+            Integration Tests
+            <span id="integration-test-count" class="badge badge-info">3 tests</span>
+          </h4>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+            <select id="integration-test-dropdown" onchange="updateEditorFromDropdown('integration')" style="padding:8px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; min-width:180px; font-size:12px; font-family:inherit">
+              <option value="">Select integration test...</option>
+              <option value="fibonacci">Fibonacci Test</option>
+              <option value="prime">Prime Test</option>
+              <option value="main_function">Main Function Test</option>
+            </select>
+            <button class="control-btn" onclick="runSelectedTest('integration')" style="padding:6px 10px;font-size:11px">RUN</button>
+          </div>
+          <button class="control-btn" onclick="runAllTestsInCategory('integration')" style="padding:6px 10px;font-size:11px;width:100%">RUN ALL INTEGRATION</button>
+        </div>
+        
+        <!-- Performance Tests Category -->
+        <div class="test-category">
+          <h4>
+            <span class="category-icon">⚡</span>
+            Performance Tests
+            <span id="performance-test-count" class="badge badge-info">2 tests</span>
+          </h4>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+            <select id="performance-test-dropdown" onchange="updateEditorFromDropdown('performance')" style="padding:8px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; min-width:180px; font-size:12px; font-family:inherit">
+              <option value="">Select performance test...</option>
+              <option value="current-code">Current Code Performance</option>
+              <option value="custom">Custom Test</option>
+            </select>
+            <button class="control-btn" onclick="runSelectedTest('performance')" style="padding:6px 10px;font-size:11px">RUN</button>
+          </div>
+          <button class="control-btn" onclick="runAllTestsInCategory('performance')" style="padding:6px 10px;font-size:11px;width:100%">RUN ALL PERFORMANCE</button>
+        </div>
+        
+        <!-- Advanced Tests Category -->
+        <div class="test-category">
+          <h4>
+            <span class="category-icon">🚀</span>
+            Advanced Tests
+            <span id="advanced-test-count" class="badge badge-info">25 tests</span>
+          </h4>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+            <select id="advanced-test-dropdown" onchange="updateEditorFromDropdown('advanced')" style="padding:8px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; min-width:180px; font-size:12px; font-family:inherit">
+              <option value="">Select advanced test...</option>
+              <optgroup label="🔄 Advanced Recursion">
+                <option value="factorial_large">Factorial Large (6!)</option>
+                <option value="fibonacci_large">Fibonacci Large (F7)</option>
+                <option value="sum_recursive">Sum Recursive</option>
+                <option value="power_recursive">Power Recursive</option>
+                <option value="gcd_recursive">GCD Recursive</option>
+              </optgroup>
+              <optgroup label="🔁 Loops">
+                <option value="while_loop">While Loop</option>
+                <option value="nested_loops">Nested Loops</option>
+              </optgroup>
+              <optgroup label="📊 Arrays">
+                <option value="array_sum">Array Sum</option>
+                <option value="array_max">Array Max</option>
+              </optgroup>
+              <optgroup label="🧮 Algorithms">
+                <option value="bubble_sort">Bubble Sort</option>
+                <option value="binary_search">Binary Search</option>
+                <option value="matrix_multiply">Matrix Multiply</option>
+                <option value="quicksort_partition">Quicksort Partition</option>
+              </optgroup>
+              <optgroup label="🔢 Mathematical">
+                <option value="collatz">Collatz Sequence</option>
+                <option value="triangle_numbers">Triangle Numbers</option>
+              </optgroup>
+              <optgroup label="⚡ Bitwise">
+                <option value="bitwise_ops">Bitwise Operations</option>
+                <option value="bit_counting">Bit Counting</option>
+              </optgroup>
+              <optgroup label="🏗️ Structures">
+                <option value="struct_test">Struct Test</option>
+              </optgroup>
+              <optgroup label="💪 Performance">
+                <option value="heavy_computation">Heavy Computation</option>
+              </optgroup>
+            </select>
+            <button class="control-btn" onclick="runSelectedTest('advanced')" style="padding:6px 10px;font-size:11px">RUN</button>
+          </div>
+          <button class="control-btn" onclick="runAllTestsInCategory('advanced')" style="padding:6px 10px;font-size:11px;width:100%">RUN ALL ADVANCED</button>
+        </div>
+        
+        <!-- Function Calls and Loop Tests Category -->
+        <div class="test-category">
+          <h4>
+            <span class="category-icon">🔗</span>
+            Function Calls & Loops
+            <span id="function_calls-test-count" class="badge badge-info">6 tests</span>
+          </h4>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+            <select id="function_calls-test-dropdown" onchange="updateEditorFromDropdown('function_calls')" style="padding:8px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; min-width:180px; font-size:12px; font-family:inherit">
+              <option value="">Select function call test...</option>
+              <optgroup label="🔄 Circular Function Calls">
+                <option value="five_function_cycle">Five Function Cycle (p1→p2→p3→p4→p5)</option>
+                <option value="four_function_cycle">Four Function Cycle (h1→h2→h3→h4)</option>
+                <option value="two_function_ping_pong">Two Function Ping-Pong (gA↔gB)</option>
+                <option value="three_function_original">Three Function Original (fA→fB→fC)</option>
+              </optgroup>
+              <optgroup label="🔁 Functions with Loops">
+                <option value="three_function_with_loops">Three Functions with Internal Loops</option>
+                <option value="function_call_in_loop">Function Calls Inside Loops</option>
+              </optgroup>
+            </select>
+            <button class="control-btn" onclick="runSelectedTest('function_calls')" style="padding:6px 10px;font-size:11px">RUN</button>
+          </div>
+          <button class="control-btn" onclick="runAllTestsInCategory('function_calls')" style="padding:6px 10px;font-size:11px;width:100%">RUN ALL FUNCTION CALLS</button>
+        </div>
+        
+        <!-- Custom Test Category -->
+        <div class="test-category">
+          <h4>
+            <span class="category-icon">⚙️</span>
+            Custom Test
+          </h4>
+          <div style="display:flex; gap:8px; margin-bottom:8px">
+            <input type="number" id="expected-value" placeholder="Expected value" style="width:80px; padding:6px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; font-size:11px; font-family:inherit" />
+            <button class="control-btn" onclick="runSingleTest()" style="padding:6px 10px;font-size:11px">TEST</button>
+          </div>
+          <input type="text" id="test-description" placeholder="Test description" style="width:100%; padding:6px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; font-size:11px; font-family:inherit" />
+        </div>
+      </div>
+      
+      <!-- Control Buttons -->
+      <div class="button-row" style="justify-content:center">
+        <button class="control-btn" onclick="clearTestResults()">CLEAR RESULTS</button>
+      </div>
+      
+      <div id="test-results" style="background:var(--bg-primary); padding:12px; font-family:'Courier New', monospace; color:var(--text-primary); min-height:100px; overflow-y:auto; border:2px solid var(--border-color); border-radius:0; white-space:pre-wrap; word-wrap:break-word; box-shadow:var(--shadow); text-shadow:var(--retro-glow)">
+        <strong>>> TEST RESULTS WILL APPEAR HERE...</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible-section">
+  <div class="collapsible-header" onclick="toggleCollapse(this)">
+    <span><strong>3. CPU State & Execution</strong></span>
+    <span class="collapse-arrow">▼</span>
+  </div>
+  <div class="collapsible-content collapsed">
+    <div class="section-content cpu-state" style="padding:20px">
+      <!-- Registers and Stack Side by Side -->
+      <div id="cpu-visual" style="display:flex; gap:20px; height:100%">
+        <!-- Registers Section -->
+        <div id="pane-registers-container" style="flex:1">
+          <div id="reg-box" style="background:var(--bg-primary); border:2px solid var(--border-color); border-radius:0; padding:15px; overflow-y:auto">
+            <h4 style="color:var(--accent-green); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px">
+              <span class="status-indicator status-info"></span>
+              CPU Registers
+            </h4>
+            <table class="table table-condensed" style="width:100%; border-collapse:collapse">
+              <thead>
+                <tr style="background:var(--bg-secondary)">
+                  <th style="padding:8px; border:1px solid var(--border-color); color:var(--accent-green); font-size:11px; text-transform:uppercase">Register</th>
+                  <th style="padding:8px; border:1px solid var(--border-color); color:var(--accent-green); font-size:11px; text-transform:uppercase">Hex</th>
+                  <th style="padding:8px; border:1px solid var(--border-color); color:var(--accent-green); font-size:11px; text-transform:uppercase">Value</th>
+                </tr>
+              </thead>
+              <tbody id="registers" style="font-family:'Courier New', monospace; font-size:11px"></tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Stack Section -->
+        <div id="stack-box" style="flex:1">
+          <div style="background:var(--bg-primary); border:2px solid var(--border-color); border-radius:0; padding:15px; overflow-y:auto">
+            <h4 style="color:var(--accent-green); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px">
+              <span class="status-indicator status-warning"></span>
+              Stack Memory
+            </h4>
+            <table id="stack-viewer" class="table table-condensed" style="width:100%; border-collapse:collapse">
+              <thead>
+                <tr style="background:var(--bg-secondary)">
+                  <th style="padding:8px; border:1px solid var(--border-color); color:var(--accent-green); font-size:11px; text-transform:uppercase">Address</th>
+                  <th style="padding:8px; border:1px solid var(--border-color); color:var(--accent-green); font-size:11px; text-transform:uppercase">Hex</th>
+                  <th style="padding:8px; border:1px solid var(--border-color); color:var(--accent-green); font-size:11px; text-transform:uppercase">Value</th>
+                </tr>
+              </thead>
+              <tbody style="font-family:'Courier New', monospace; font-size:11px"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Load original demo scripts FIRST to set up proper structures -->
+<script src="demo.js"></script>
+<script src="demo-x86.js"></script>
+<script src="raw-code-loader.js"></script>
+
+<script>
+// Global variables
+window.cCodeEditor = null;
+window.hexEditor = null;
+window.compiledHex = '';
+window.tccModule = null;
+window.capstoneModule = null;
+window.currentTheme = 'dark';
+window.testProgress = 0;
+window.totalTests = 0;
+
+// Theme Management
+function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    document.getElementById('theme-icon').textContent = currentTheme === 'dark' ? '🌙' : '☀️';
+    localStorage.setItem('theme', currentTheme);
+}
+
+// Initialize theme from localStorage
+function initializeTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    currentTheme = savedTheme;
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    document.getElementById('theme-icon').textContent = currentTheme === 'dark' ? '🌙' : '☀️';
+}
+
+// Help Modal Functions
+function showHelp() {
+    document.getElementById('help-modal').style.display = 'flex';
+}
+
+function hideHelp() {
+    document.getElementById('help-modal').style.display = 'none';
+}
+
+// Tab Management function removed - CPU State now shows Registers and Stack side by side
+
+// Progress Bar Management
+function updateTestProgress(current, total) {
+    const progressBar = document.getElementById('test-progress-bar');
+    const progressContainer = document.getElementById('test-progress');
+    
+    if (total > 0) {
+        const percentage = (current / total) * 100;
+        progressBar.style.width = percentage + '%';
+        progressContainer.style.display = 'block';
+        
+        if (current === total) {
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 2000);
+        }
+    }
+}
+
+// Status Indicator Management
+function updateStatusIndicator(elementId, status) {
+    const indicator = document.getElementById(elementId);
+    if (indicator) {
+        indicator.className = `status-indicator status-${status}`;
+        
+        // Update data-status attribute for editor containers
+        const editorContainer = indicator.closest('.column')?.querySelector('.editor-container');
+        if (editorContainer) {
+            const statusText = {
+                'success': 'Ready',
+                'error': 'Error',
+                'warning': 'Pending',
+                'info': 'Active'
+            };
+            editorContainer.setAttribute('data-status', statusText[status] || 'Unknown');
+        }
+    }
+}
+
+// Escape - Close Help Modal
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        hideHelp();
+    }
+});
+
+// Resizable Panels
+function initializeResizablePanels() {
+    const resizeHandles = document.querySelectorAll('.resize-handle');
+    
+    resizeHandles.forEach(handle => {
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+        let panel = null;
+        
+        handle.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            startX = e.clientX;
+            panel = handle.closest('.resizable-panel');
+            startWidth = parseInt(document.defaultView.getComputedStyle(panel).width, 10);
+            document.addEventListener('mousemove', resize);
+            document.addEventListener('mouseup', stopResize);
+            e.preventDefault();
+        });
+        
+        function resize(e) {
+            if (!isResizing) return;
+            const width = startWidth + (e.clientX - startX);
+            if (width > 200) { // Minimum width
+                panel.style.width = width + 'px';
+            }
+        }
+        
+        function stopResize() {
+            isResizing = false;
+            document.removeEventListener('mousemove', resize);
+            document.removeEventListener('mouseup', stopResize);
+        }
+    });
+}
+
+// Example code library
+const examples = {
+    basic: `int main() {
+    int x = 10;
+    int y = 20;
+    int sum = x + y;
+    return sum;
+}`,
+    loop: `int main() {
+    int sum = 0;
+    for (int i = 1; i <= 5; i++) {
+        sum += i;
+    }
+    return sum;
+}`,
+    ifelse: `int main() {
+    int x = 10;
+    if (x > 5) {
+        return 100;
+    } else {
+        return 50;
+    }
+}`,
+    function: `int add(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    int result = add(15, 25);
+    return result;
+}`,
+    math: `int main() {
+    int a = 8;
+    int b = 3;
+    int sum = a + b;
+    int diff = a - b;
+    int prod = sum * diff;
+    return prod;
+}`,
+    bitwise: `int main() {
+    int a = 12;  // 1100 in binary
+    int b = 10;  // 1010 in binary
+    int result = a & b;  // AND operation
+    return result;
+}`,
+    multiply: `int main() {
+    int a = 7;
+    int b = 6;
+    int result = a * b;
+    return result;
+}`,
+    division: `int main() {
+    int a = 42;
+    int b = 6;
+    int result = a / b;
+    return result;
+}`,
+    shifting: `int main() {
+    int value = 5;
+    int left_shift = value << 2;   // Multiply by 4
+    int right_shift = value >> 1;  // Divide by 2
+    return left_shift + right_shift;
+}`,
+    complex: `int fibonacci(int n) {
+    if (n <= 1) return n;
+    return fibonacci(n-1) + fibonacci(n-2);
+}
+
+int main() {
+    return fibonacci(5);
+}`
+};
+
+// Test library
+const tests = {
+    simple: { 
+        code: `int main() {
+    return 42;
+}`, 
+        expected: 42, 
+        description: "Test simple return value",
+        timeout: 5000
+    },
+    add: { 
+        code: examples.function, 
+        expected: 40, 
+        description: "Test addition function",
+        timeout: 5000
+    },
+    arithmetic: {
+        code: `int add(int a, int b) {
+    return a + b;
+}
+int mul2(int a) {
+    return a * 2;
+}
+int main() {
+    int x = 5;
+    int y = 3;
+    int result = add(x, y);
+    int result2 = mul2(result);
+    return result2;
+}`,
+        expected: 16,
+        description: "Test multiple function calls with arithmetic",
+        timeout: 8000
+    },
+    subtraction: {
+        code: `int sub(int a, int b) {
+    return a - b;
+}
+int main() {
+    return sub(10, 3);
+}`,
+        expected: 7,
+        description: "Test subtraction function",
+        timeout: 5000
+    },
+    multiplication: {
+        code: `int mul(int a, int b) {
+    return a * b;
+}
+int main() {
+    return mul(6, 7);
+}`,
+        expected: 42,
+        description: "Test multiplication function",
+        timeout: 5000
+    },
+    nested_calls: {
+        code: `int double_val(int x) {
+    return x * 2;
+}
+int add_one(int x) {
+    return x + 1;
+}
+int main() {
+    return add_one(double_val(5));
+}`,
+        expected: 11,
+        description: "Test nested function calls",
+        timeout: 8000
+    },
+    conditional: {
+        code: `int max(int a, int b) {
+    if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+int main() {
+    return max(15, 8);
+}`,
+        expected: 15,
+        description: "Test conditional statements",
+        timeout: 8000
+    },
+    factorial: { 
+        code: `int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n-1);
+}
+
+int main() {
+    return factorial(5);
+}`, 
+        expected: 120, 
+        description: "Test recursive factorial function",
+        timeout: 10000
+    },
+    fibonacci: { 
+        code: examples.complex, 
+        expected: 5, 
+        description: "Test fibonacci sequence",
+        timeout: 10000
+    },
+    prime: { 
+        code: `int isPrime(int n) {
+    if (n <= 1) return 0;
+    for (int i = 2; i * i <= n; i++) {
+        if (n % i == 0) return 0;
+    }
+    return 1;
+}
+
+int main() {
+    return isPrime(17);
+}`, 
+        expected: 1, 
+        description: "Test prime number check",
+        timeout: 8000
+    },
+    iterative_loop: {
+        code: `int main() {
+    int sum = 0;
+    for (int i = 1; i <= 5; i++) {
+        sum += i;
+    }
+    return sum;
+}`,
+        expected: 15,
+        description: "Test for loop iteration",
+        timeout: 10000
+    },
+    while_loop: {
+        code: `int main() {
+    int count = 0;
+    int i = 1;
+    while (i <= 4) {
+        count += i;
+        i++;
+    }
+    return count;
+}`,
+        expected: 10,
+        description: "Test while loop",
+        timeout: 10000
+    },
+    sum_up_to: {
+        code: `int sum_up_to(int n) {
+    int sum = 0;
+    for (int i = 1; i <= n; i++) {
+        if (i % 2 == 0) {
+            continue;
+        }
+        sum += i;
+        if (sum > 10) {
+            break;
+        }
+    }
+    return sum;
+}
+
+int main() {
+    return sum_up_to(5);
+}`,
+        expected: 9,
+        description: "Test for loop with continue and break",
+        timeout: 8000
+    },
+    main_function: {
+        code: `void print_sign(int x) {
+    // Dummy function for testing
+}
+
+int sum_up_to(int n) {
+    int sum = 0;
+    for (int i = 1; i <= n; i++) {
+        if (i % 2 == 0) {
+            continue;
+        }
+        sum += i;
+        if (sum > 10) {
+            break;
+        }
+    }
+    return sum;
+}
+
+int main() {
+    int a = 5;
+    print_sign(a);
+    int result = sum_up_to(a);
+    return result;
+}`,
+        expected: 9,
+        description: "Test complete main function with multiple function calls",
+        timeout: 10000
+    },
+    infinite_loop_test: {
+        code: `int main() {
+    while (1) {
+        // This should timeout and be cancelled
+    }
+    return 99;
+}`,
+        expected: null, // Special marker for expected timeout
+        description: "Test infinite loop detection and cancellation",
+        timeout: 3000,
+        shouldTimeout: true
+    },
+    infinite_recursion_test: {
+        code: `int bad_function(int n) {
+    return bad_function(n + 1);
+}
+int main() {
+    return bad_function(1);
+}`,
+        expected: null,
+        description: "Test infinite recursion detection and cancellation", 
+        timeout: 3000,
+        shouldTimeout: true
+    },
+    
+    // === ADVANCED RECURSION TESTS ===
+    factorial_large: {
+        code: `int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n-1);
+}
+
+int main() {
+    return factorial(6);
+}`,
+        expected: 720,
+        description: "Test factorial with larger number",
+        timeout: 8000
+    },
+    
+    fibonacci_large: {
+        code: `int fibonacci(int n) {
+    if (n <= 1) return n;
+    return fibonacci(n-1) + fibonacci(n-2);
+}
+
+int main() {
+    return fibonacci(7);
+}`,
+        expected: 13,
+        description: "Test fibonacci with larger number",
+        timeout: 10000
+    },
+    
+    sum_recursive: {
+        code: `int sum_recursive(int n) {
+    if (n <= 1) return n;
+    return n + sum_recursive(n-1);
+}
+
+int main() {
+    return sum_recursive(5);
+}`,
+        expected: 15,
+        description: "Test recursive sum function",
+        timeout: 5000
+    },
+    
+    power_recursive: {
+        code: `int power(int base, int exp) {
+    if (exp == 0) return 1;
+    return base * power(base, exp-1);
+}
+
+int main() {
+    return power(2, 4);
+}`,
+        expected: 16,
+        description: "Test recursive power function",
+        timeout: 5000
+    },
+    
+    gcd_recursive: {
+        code: `int gcd(int a, int b) {
+    if (b == 0) return a;
+    return gcd(b, a % b);
+}
+
+int main() {
+    return gcd(48, 18);
+}`,
+        expected: 6,
+        description: "Test recursive GCD algorithm",
+        timeout: 5000
+    },
+    
+    // === LOOP TESTS ===
+    while_loop: {
+        code: `int main() {
+    int i = 0;
+    int sum = 0;
+    while (i < 5) {
+        sum += i;
+        i++;
+    }
+    return sum;
+}`,
+        expected: 10,
+        description: "Test while loop functionality",
+        timeout: 5000
+    },
+    
+    nested_loops: {
+        code: `int main() {
+    int sum = 0;
+    for (int i = 1; i <= 3; i++) {
+        for (int j = 1; j <= 3; j++) {
+            sum += i * j;
+        }
+    }
+    return sum;
+}`,
+        expected: 36,
+        description: "Test nested loop functionality",
+        timeout: 5000
+    },
+    
+    // === ARRAY TESTS ===
+    array_sum: {
+        code: `int main() {
+    int arr[5] = {1, 2, 3, 4, 5};
+    int sum = 0;
+    for (int i = 0; i < 5; i++) {
+        sum += arr[i];
+    }
+    return sum;
+}`,
+        expected: 15,
+        description: "Test array initialization and sum",
+        timeout: 5000
+    },
+    
+    array_max: {
+        code: `int main() {
+    int arr[5] = {3, 7, 1, 9, 2};
+    int max = arr[0];
+    for (int i = 1; i < 5; i++) {
+        if (arr[i] > max) {
+            max = arr[i];
+        }
+    }
+    return max;
+}`,
+        expected: 9,
+        description: "Test finding maximum in array",
+        timeout: 5000
+    },
+    
+    // === COMPLEX ALGORITHMS ===
+    bubble_sort: {
+        code: `int main() {
+    int arr[5] = {64, 34, 25, 12, 22};
+    int n = 5;
+    
+    for (int i = 0; i < n-1; i++) {
+        for (int j = 0; j < n-i-1; j++) {
+            if (arr[j] > arr[j+1]) {
+                int temp = arr[j];
+                arr[j] = arr[j+1];
+                arr[j+1] = temp;
+            }
+        }
+    }
+    
+    return arr[0]; // Return smallest element
+}`,
+        expected: 12,
+        description: "Test bubble sort algorithm",
+        timeout: 8000
+    },
+    
+    binary_search: {
+        code: `int binarySearch(int arr[], int l, int r, int x) {
+    if (r >= l) {
+        int mid = l + (r - l) / 2;
+        if (arr[mid] == x) return mid;
+        if (arr[mid] > x) return binarySearch(arr, l, mid - 1, x);
+        return binarySearch(arr, mid + 1, r, x);
+    }
+    return -1;
+}
+
+int main() {
+    int arr[5] = {2, 3, 4, 10, 40};
+    int result = binarySearch(arr, 0, 4, 10);
+    return result;
+}`,
+        expected: 3,
+        description: "Test recursive binary search",
+        timeout: 8000
+    },
+    
+    // === MATHEMATICAL TESTS ===
+    collatz: {
+        code: `int collatz(int n) {
+    int steps = 0;
+    while (n != 1) {
+        if (n % 2 == 0) {
+            n = n / 2;
+        } else {
+            n = 3 * n + 1;
+        }
+        steps++;
+    }
+    return steps;
+}
+
+int main() {
+    return collatz(7);
+}`,
+        expected: 16,
+        description: "Test Collatz conjecture sequence",
+        timeout: 8000
+    },
+    
+    triangle_numbers: {
+        code: `int triangleNumber(int n) {
+    return n * (n + 1) / 2;
+}
+
+int main() {
+    int sum = 0;
+    for (int i = 1; i <= 5; i++) {
+        sum += triangleNumber(i);
+    }
+    return sum;
+}`,
+        expected: 35,
+        description: "Test triangle numbers calculation",
+        timeout: 5000
+    },
+    
+    // === BITWISE TESTS ===
+    bitwise_ops: {
+        code: `int main() {
+    int a = 12;  // 1100 in binary
+    int b = 10;  // 1010 in binary
+    int and_result = a & b;  // 1000 = 8
+    int or_result = a | b;   // 1110 = 14
+    int xor_result = a ^ b;  // 0110 = 6
+    return and_result + or_result + xor_result;
+}`,
+        expected: 28,
+        description: "Test bitwise operations",
+        timeout: 5000
+    },
+    
+    bit_counting: {
+        code: `int countBits(int n) {
+    int count = 0;
+    while (n) {
+        count += n & 1;
+        n >>= 1;
+    }
+    return count;
+}
+
+int main() {
+    return countBits(15); // 1111 in binary = 4 bits
+}`,
+        expected: 4,
+        description: "Test bit counting algorithm",
+        timeout: 5000
+    },
+    
+    // === STRUCT TESTS ===
+    struct_test: {
+        code: `struct Point {
+    int x;
+    int y;
+};
+
+int main() {
+    struct Point p;
+    p.x = 3;
+    p.y = 4;
+    return p.x * p.x + p.y * p.y; // Distance squared
+}`,
+        expected: 25,
+        description: "Test struct definition and usage",
+        timeout: 5000
+    },
+    
+    // === PERFORMANCE TESTS ===
+    heavy_computation: {
+        code: `int compute(int n) {
+    int result = 0;
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= i; j++) {
+            result += (i * j) % 7;
+        }
+    }
+    return result;
+}
+
+int main() {
+    return compute(20);
+}`,
+        expected: 588,
+        description: "Test heavy nested computation",
+        timeout: 30000
+    },
+    
+    // Function Calls and Loop Tests
+    five_function_cycle: {
+        code: `/* p1 → p2 → p3 → p4 → p5 — per cycle: +15 */
+
+int p1(int n, int sum);
+int p2(int n, int sum);
+int p3(int n, int sum);
+int p4(int n, int sum);
+int p5(int n, int sum);
+
+int p1(int n, int sum){
+    sum += 1;
+    if (n == 0) return sum;
+    return p2(n - 1, sum);
+}
+
+int p2(int n, int sum){
+    sum += 2;
+    if (n == 0) return sum;
+    return p3(n - 1, sum);
+}
+
+int p3(int n, int sum){
+    sum += 3;
+    if (n == 0) return sum;
+    return p4(n - 1, sum);
+}
+
+int p4(int n, int sum){
+    sum += 4;
+    if (n == 0) return sum;
+    return p5(n - 1, sum);
+}
+
+int p5(int n, int sum){
+    sum += 5;
+    if (n == 0) return sum;
+    return p1(n - 1, sum);   /* wrap to start */
+}
+
+int main(void){
+    int loops = 2;                 /* two full cycles */
+    int result = p1(loops * 5 - 1, 0);
+    return result;                 /* expected: 2 × 15 = 30 */
+}`,
+        expected: 30,
+        description: "Five function circular calls",
+        timeout: 10000
+    },
+    
+    four_function_cycle: {
+        code: `/* h1 → h2 → h3 → h4 — per cycle: +10 */
+
+int h1(int n, int sum);
+int h2(int n, int sum);
+int h3(int n, int sum);
+int h4(int n, int sum);
+
+int h1(int n, int sum){
+    sum += 1;
+    if (n == 0) return sum;
+    return h2(n - 1, sum);
+}
+
+int h2(int n, int sum){
+    sum += 2;
+    if (n == 0) return sum;
+    return h3(n - 1, sum);
+}
+
+int h3(int n, int sum){
+    sum += 3;
+    if (n == 0) return sum;
+    return h4(n - 1, sum);
+}
+
+int h4(int n, int sum){
+    sum += 4;
+    if (n == 0) return sum;
+    return h1(n - 1, sum);   /* wrap around */
+}
+
+int main(void){
+    int loops = 5;                 /* five full cycles */
+    int result = h1(loops * 4 - 1, 0);
+    return result;                 /* expected: 5 × 10 = 50 */
+}`,
+        expected: 50,
+        description: "Four function circular calls",
+        timeout: 10000
+    },
+    
+    two_function_ping_pong: {
+        code: `/* gA ↔ gB — per cycle: +5 +10 = +15 */
+
+int gA(int n, int sum);
+int gB(int n, int sum);
+
+int gA(int n, int sum){
+    sum += 5;
+    if (n == 0) return sum;
+    return gB(n - 1, sum);
+}
+
+int gB(int n, int sum){
+    sum += 10;
+    if (n == 0) return sum;
+    return gA(n - 1, sum);
+}
+
+int main(void){
+    int loops = 3;                 /* three full A-B cycles */
+    int result = gA(loops * 2 - 1, 0);
+    return result;                 /* expected: 3 × 15 = 45 */
+}`,
+        expected: 45,
+        description: "Two function ping-pong calls",
+        timeout: 10000
+    },
+    
+    three_function_with_loops: {
+        code: `/* aA → aB → aC — each visit:
+     aA: +1 three times  = +3
+     aB: +2 three times  = +6
+     aC: +3 three times  = +9
+   Per full cycle: 3 + 6 + 9 = 18
+*/
+
+int aA(int n, int sum);
+int aB(int n, int sum);
+int aC(int n, int sum);
+
+int aA(int n, int sum){
+    for (int i = 0; i < 3; ++i) sum += 1;   /* loop inside */
+    if (n == 0) return sum;
+    return aB(n - 1, sum);
+}
+
+int aB(int n, int sum){
+    for (int i = 0; i < 3; ++i) sum += 2;
+    if (n == 0) return sum;
+    return aC(n - 1, sum);
+}
+
+int aC(int n, int sum){
+    for (int i = 0; i < 3; ++i) sum += 3;
+    if (n == 0) return sum;
+    return aA(n - 1, sum);        /* wrap */
+}
+
+int main(void){
+    int loops = 2;                /* two full cycles */
+    int result = aA(loops * 3 - 1, 0);
+    return result;                /* expected exit code: 2 × 18 = 36 */
+}`,
+        expected: 36,
+        description: "Three functions with internal loops",
+        timeout: 10000
+    },
+    
+    function_call_in_loop: {
+        code: `/* two-function program
+   ─ addFive(x)       : returns x + 5          (simple arithmetic)
+   ─ loopAndCall(n)   : for-loop that calls addFive each iteration
+                        sums the results and returns the total     */
+
+int addFive(int x){
+    return x + 5;              /* simple arithmetic, no side effects */
+}
+
+int loopAndCall(int n){
+    int sum = 0;
+    for (int i = 0; i < n; ++i)       /* ← for-loop inside the function */
+        sum += addFive(i);            /* ← function call inside the loop */
+    return sum;
+}
+
+int main(void){
+    int result = loopAndCall(6);
+    /* addFive(0..5) = 5+6+7+8+9+10 = 45 */
+    return result;                    /* expected exit code: 45 */
+}`,
+        expected: 45,
+        description: "Function calls inside loops",
+        timeout: 8000
+    },
+    
+    three_function_original: {
+        code: `int fA(int n, int sum);
+int fB(int n, int sum);
+int fC(int n, int sum);
+
+/* ---- function definitions ---- */
+
+int fA(int n, int sum){
+    sum += 1;
+    if (n == 0) return sum;     /* base-case return */
+    return fB(n - 1, sum);      /* call the next link */
+}
+
+int fB(int n, int sum){
+    sum += 2;
+    if (n == 0) return sum;
+    return fC(n - 1, sum);
+}
+
+int fC(int n, int sum){
+    sum += 3;
+    if (n == 0) return sum;
+    return fA(n - 1, sum);      /* wrap back to fA */
+}
+
+/* ---- entry point ---- */
+
+int main(void){
+    int loops = 4;              /* how many full cycles to run */
+    int result = fA(loops * 3 - 1, 0);
+    /* loops*3-1 ensures exactly `loops` visits to each function */
+    return result;
+}`,
+        expected: 24,
+        description: "Original three function circular test",
+        timeout: 10000
+    },
+    
+    matrix_multiply: {
+        code: `int main() {
+    int a[2][2] = {{1, 2}, {3, 4}};
+    int b[2][2] = {{2, 0}, {1, 2}};
+    int c[2][2];
+    
+    // Matrix multiplication: c = a * b
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            c[i][j] = 0;
+            for (int k = 0; k < 2; k++) {
+                c[i][j] += a[i][k] * b[k][j];
+            }
+        }
+    }
+    
+    return c[1][1]; // Bottom-right element
+}`,
+        expected: 8,
+        description: "Test 2x2 matrix multiplication",
+        timeout: 8000
+    },
+    
+    quicksort_partition: {
+        code: `int partition(int arr[], int low, int high) {
+    int pivot = arr[high];
+    int i = low - 1;
+    
+    for (int j = low; j < high; j++) {
+        if (arr[j] <= pivot) {
+            i++;
+            int temp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = temp;
+        }
+    }
+    
+    int temp = arr[i + 1];
+    arr[i + 1] = arr[high];
+    arr[high] = temp;
+    
+    return i + 1;
+}
+
+int main() {
+    int arr[5] = {10, 7, 8, 9, 1};
+    int pivot_pos = partition(arr, 0, 4);
+    return arr[pivot_pos]; // Should be the pivot element
+}`,
+        expected: 1,
+        description: "Test quicksort partition algorithm",
+        timeout: 8000
+    }
+};
+
+// Simplified utility functions with natural height expansion
+function toggleCollapse(element) {
+    const content = element.nextElementSibling;
+    const arrow = element.querySelector('.collapse-arrow');
+    
+    if (content.classList.contains('collapsed')) {
+        content.classList.remove('collapsed');
+        arrow.style.transform = 'rotate(0deg)';
+    } else {
+        content.classList.add('collapsed');
+        arrow.style.transform = 'rotate(-90deg)';
+    }
+}
+
+function showStatus(message, type = 'info') {
+    const statusDiv = document.getElementById('compile-status');
+    const statusText = document.getElementById('status-text');
+    statusDiv.style.display = 'block';
+    statusText.textContent = message;
+    
+    // Color coding
+    if (type === 'success') {
+        statusDiv.style.background = '#50fa7b';
+        statusDiv.style.color = '#282a36';
+    } else if (type === 'error') {
+        statusDiv.style.background = '#ff5555';
+        statusDiv.style.color = '#f8f8f2';
+    } else {
+        statusDiv.style.background = '#44475a';
+        statusDiv.style.color = '#f8f8f2';
+    }
+    
+    // Auto-hide after 5 seconds for non-error messages
+    if (type !== 'error') {
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// Example and test loading functions
+function loadExample(type) {
+    if (examples[type] && cCodeEditor) {
+        cCodeEditor.setValue(examples[type]);
+        showStatus(`Loaded ${type} example`, 'success');
+    }
+}
+
+function loadTest(type) {
+    if (tests[type] && cCodeEditor) {
+        cCodeEditor.setValue(tests[type].code);
+        document.getElementById('expected-value').value = tests[type].expected;
+        document.getElementById('test-description').value = tests[type].description;
+        showStatus(`Loaded ${type} test`, 'success');
+    }
+}
+
+// Initialize compilation modules
+async function initializeModules() {
+    if (tccModule && capstoneModule) return; // Already loaded
+    
+    try {
+        showStatus('📦 Loading compilation modules...', 'info');
+        
+        // Load TCC module from the build directory
+        const tccScript = document.createElement('script');
+        tccScript.src = 'build-tcc/tcc.js';
+        document.head.appendChild(tccScript);
+        
+        await new Promise((resolve, reject) => {
+            tccScript.onload = resolve;
+            tccScript.onerror = reject;
+        });
+        
+        // Wait for TCC module to be available
+        window.tccModule = await createTCC({
+            locateFile: (path) => `build-tcc/${path}`
+        });
+        
+        showStatus('✅ Compilation modules loaded', 'success');
+    } catch (error) {
+        console.error('Failed to load modules:', error);
+        showStatus('❌ Failed to load compilation modules. Using demo mode.', 'error');
+    }
+}
+
+// Main compilation function
+async function compileAndDisasm() {
+    showStatus('🔨 Compiling...', 'info');
+    
+    // Update status indicators
+    updateStatusIndicator('editor-status', 'info');
+    updateStatusIndicator('hex-status', 'warning');
+    updateStatusIndicator('asm-status', 'warning');
+    
+    // Get C code from editor
+    const cCode = cCodeEditor ? cCodeEditor.getValue() : examples.function;
+    
+    // Try to use TCC compilation if modules are loaded
+    if (window.tccModule) {
+        try {
+            // Compile C code using TCC
+            const result = await compileWithTCC(cCode);
+            if (result.success) {
+                compiledHex = result.hex;
+                // Store the main function offset for the debugger
+                window.mainFunctionOffset = result.mainOffset;
+                if (hexEditor) hexEditor.setValue(result.hex);
+                // Assembly is now displayed in the interactive table, no need for asmEditor
+                updateStatusIndicator('hex-status', 'success');
+                updateStatusIndicator('asm-status', 'success');
+                showStatus('✅ Compilation successful!', 'success');
+                return;
+            }
+        } catch (error) {
+            console.error('TCC compilation failed:', error);
+            showStatus('⚠️ TCC compilation failed, using demo code', 'info');
+        }
+    }
+    
+    // Fallback to demo code
+    const workingHex = '48C7C705000000 48C7C603000000 55 4889E5 4881EC10000000 48897DF8 488975F0 8B45F8 8B4DF0 01C8 C9 C3';
+    if (hexEditor) hexEditor.setValue(workingHex);
+    
+    // Load demo assembly into the interactive table
+    const demoAssembly = [
+        { address: 0x10000, hex: '48C7C705000000', assembly: 'mov rdi, 5' },
+        { address: 0x10007, hex: '48C7C603000000', assembly: 'mov rsi, 3' },
+        { address: 0x1000e, hex: '55', assembly: 'push rbp' },
+        { address: 0x1000f, hex: '4889E5', assembly: 'mov rbp, rsp' },
+        { address: 0x10012, hex: '4881EC10000000', assembly: 'sub rsp, 0x10' },
+        { address: 0x10019, hex: '48897DF8', assembly: 'mov qword ptr [rbp - 8], rdi' },
+        { address: 0x1001d, hex: '488975F0', assembly: 'mov qword ptr [rbp - 0x10], rsi' },
+        { address: 0x10021, hex: '8B45F8', assembly: 'mov eax, dword ptr [rbp - 8]' },
+        { address: 0x10024, hex: '8B4DF0', assembly: 'mov ecx, dword ptr [rbp - 0x10]' },
+        { address: 0x10027, hex: '01C8', assembly: 'add eax, ecx' },
+        { address: 0x10029, hex: 'C9', assembly: 'leave' },
+        { address: 0x1002a, hex: 'C3', assembly: 'ret' }
+    ];
+    
+    // Populate the assembly table
+    const assemblerTable = document.getElementById('assembler');
+    if (assemblerTable) {
+        const tbody = assemblerTable.querySelector('tbody');
+        tbody.innerHTML = '';
+        demoAssembly.forEach(inst => {
+            const row = tbody.insertRow();
+            row.className = 'row-instruction';
+            row.innerHTML = `
+                <td style="padding:4px;border:1px solid var(--border-color);color:var(--accent-cyan)">${inst.address.toString(16).toUpperCase()}</td>
+                <td style="padding:4px;border:1px solid var(--border-color);color:var(--accent-yellow)">${inst.hex}</td>
+                <td style="padding:4px;border:1px solid var(--border-color);color:var(--text-primary)">${inst.assembly}</td>
+            `;
+        });
+    }
+    
+    compiledHex = workingHex;
+    updateStatusIndicator('hex-status', 'success');
+    updateStatusIndicator('asm-status', 'success');
+    showStatus('✅ Demo compilation loaded', 'success');
+}
+
+// TCC compilation function
+async function compileWithTCC(cCode) {
+    if (!window.tccModule) {
+        throw new Error('TCC module not loaded');
+    }
+    
+    try {
+        // Write C code to virtual filesystem
+        const filename = 'input.c';
+        window.tccModule.FS.writeFile(filename, cCode);
+        
+        // Compile and get machine code
+        const lenPtr = window.tccModule._malloc(4);
+        const codePtr = window.tccModule.ccall('compile_and_get_text', 'number', 
+            ['string', 'number'], [filename, lenPtr]);
+        
+        const codeSize = window.tccModule.HEAP32[lenPtr >> 2];
+        
+        if (codePtr === 0 || codeSize === 0) {
+            throw new Error('Compilation failed - no output generated');
+        }
+        
+        // Extract machine code bytes
+        const bytes = new Uint8Array(window.tccModule.HEAPU8.buffer, codePtr, codeSize);
+        
+        // Find main function in the compiled code
+        const { mainBytes, mainOffset } = findMainFunction(bytes);
+        
+        const hex = Array.from(mainBytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+        
+        // Use Capstone to disassemble all functions
+        let assembly = await disassembleBytes(mainBytes, 0x10000);
+        if (!assembly) {
+            // Fallback to basic hex display
+            assembly = mainBytes.map((byte, i) => `0x${(0x10000 + i).toString(16)}: db 0x${byte.toString(16).padStart(2, '0')}`).join('\n');
+        }
+        
+        // Clean up
+        window.tccModule._free(lenPtr);
+        window.tccModule._free(codePtr);
+        
+        return { success: true, hex, assembly, fullBytes: bytes, mainOffset };
+    } catch (error) {
+        console.error('TCC compilation error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Find the main function in compiled bytes
+function findMainFunction(bytes) {
+    // Pattern for main function prologue: push rbp; mov rbp, rsp; sub rsp, ???
+    // Look for: 55 48 89 E5 48 81 EC (or 48 83 EC for smaller stack allocation)
+    
+    // First, try to find multiple function starts
+    const functionStarts = [];
+    for (let i = 0; i < bytes.length - 7; i++) {
+        if (bytes[i] === 0x55 && bytes[i+1] === 0x48 && bytes[i+2] === 0x89 && bytes[i+3] === 0xE5) {
+            functionStarts.push(i);
+        }
+    }
+    
+    console.log(`[TCC] Found ${functionStarts.length} functions at offsets:`, functionStarts);
+    
+    if (functionStarts.length === 0) {
+        // No standard function prologue found, return all bytes
+        console.log('[TCC] No function prologue found, using all bytes');
+        return { mainBytes: bytes, mainOffset: 0 };
+    }
+    
+    if (functionStarts.length === 1) {
+        // Only one function, assume it's main
+        console.log('[TCC] Single function found, assuming it is main');
+        return { mainBytes: bytes.slice(functionStarts[0]), mainOffset: functionStarts[0] };
+    }
+    
+    // Multiple functions found - main is typically the last function in C programs
+    // Look for the main function by checking the last function (common pattern)
+    const mainStart = functionStarts[functionStarts.length - 1];
+    console.log(`[TCC] Multiple functions found, main likely at offset ${mainStart} (last function)`);
+    
+    // Return all bytes but indicate where main starts
+    // This way function calls to other functions still work
+    console.log(`[TCC] Using all ${bytes.length} bytes, main function starts at offset ${mainStart}`);
+    return { mainBytes: bytes, mainOffset: mainStart };
+}
+
+// Disassemble bytes using Capstone (if available)
+async function disassembleBytes(bytes, baseAddress = 0x10000) {
+    try {
+        // Use the existing Capstone disassembler from demo.js
+        if (typeof d !== 'undefined') {
+            const instructions = d.disasm(bytes, baseAddress);
+            return instructions.map(insn => 
+                `0x${insn.address.toString(16)}: ${insn.mnemonic} ${insn.op_str}`
+            ).join('\n');
+        }
+    } catch (error) {
+        console.error('Disassembly failed:', error);
+    }
+    return null;
+}
+
+// Debugging functions that use the original debugger
+function debugInit() {
+    if (!compiledHex) {
+        showStatus('❌ Compile first before debugging!', 'error');
+        return;
+    }
+    
+    try {
+        // Check if we have a main function offset from TCC compilation
+        if (window.mainFunctionOffset !== undefined && window.mainFunctionOffset !== null) {
+            console.log('[Debug Init] Using main function offset:', window.mainFunctionOffset);
+            
+            // Convert hex string to bytes for proper loading
+            var hexBytes = compiledHex.replace(/\s+/g, '');
+            var bytes = [];
+            for (var i = 0; i < hexBytes.length; i += 2) {
+                bytes.push(parseInt(hexBytes.substr(i, 2), 16));
+            }
+            
+            // Use the enhanced loading function that supports main offset
+            rawCodeLoader.rawBytes = bytes;
+            rawCodeLoader.mainFunctionOffset = window.mainFunctionOffset;
+            rawCodeLoader.disassembleAndLoad(window.mainFunctionOffset);
+            
+            // Mapping initialization now happens automatically in rawCodeLoader.disassembleAndLoad()
+            // No need for delayed initialization here
+            
+            showStatus('🐛 64-bit debug session started at MAIN function - assembly highlighting active!', 'success');
+        } else {
+            // Fallback to original method
+            rawCodeLoader.loadHexBytes(compiledHex);
+            showStatus('🐛 64-bit debug session started - assembly highlighting active!', 'success');
+        }
+    } catch (error) {
+        showStatus('❌ Debug initialization failed: ' + error.message, 'error');
+    }
+}
+
+function step() {
+    try {
+        if (stepDebugger && stepDebugger.isInitialized) {
+            stepDebugger.stepNext();
+            showStatus('▶️ Stepped to next instruction', 'info');
+        } else {
+            showStatus('❌ Debug session not active. Click "Start Debug" first.', 'error');
+        }
+    } catch (error) {
+        showStatus('❌ Step failed: ' + error.message, 'error');
+    }
+}
+
+function resetStepper() {
+    try {
+        if (compiledHex) {
+            rawCodeLoader.loadHexBytes(compiledHex);
+            showStatus('🔄 Debugger reset - assembly highlighting restored', 'success');
+        } else {
+            showStatus('❌ No compiled code to reset with', 'error');
+        }
+    } catch (error) {
+        showStatus('❌ Reset failed: ' + error.message, 'error');
+    }
+}
+
+// Test categories
+const testCategories = {
+    unit: ['simple', 'add', 'factorial', 'print_sign', 'sum_up_to'],
+    integration: ['fibonacci', 'prime', 'main_function'],
+    performance: ['current-code', 'custom'],
+    advanced: [
+        'factorial_large', 'fibonacci_large', 'sum_recursive', 'power_recursive', 'gcd_recursive',
+        'while_loop', 'nested_loops', 'array_sum', 'array_max', 'bubble_sort', 'binary_search',
+        'matrix_multiply', 'quicksort_partition', 'collatz', 'triangle_numbers', 'bitwise_ops',
+        'bit_counting', 'struct_test', 'heavy_computation'
+    ],
+    function_calls: [
+        'five_function_cycle', 'four_function_cycle', 'two_function_ping_pong', 
+        'three_function_with_loops', 'function_call_in_loop', 'three_function_original'
+    ]
+};
+
+// New dropdown-based test functions
+function runSelectedTest(category) {
+    const dropdown = document.getElementById(`${category}-test-dropdown`);
+    const selectedTest = dropdown.value;
+    
+    if (!selectedTest) {
+        showStatus('❌ Please select a test from the dropdown', 'error');
+        return;
+    }
+    
+    if (selectedTest === 'current-code') {
+        runCurrentCodeTest();
+    } else if (selectedTest === 'custom') {
+        runSingleTest();
+    } else {
+        loadTest(selectedTest);
+        setTimeout(() => runSingleTest(), 100);
+    }
+}
+
+// Update editor when dropdown selection changes
+function updateEditorFromDropdown(category) {
+    const dropdown = document.getElementById(`${category}-test-dropdown`);
+    const selectedTest = dropdown.value;
+    
+    if (!selectedTest || selectedTest === 'current-code' || selectedTest === 'custom') {
+        return; // Don't update editor for special options or empty selection
+    }
+    
+    // Find the test in the tests object
+    if (tests[selectedTest]) {
+        if (cCodeEditor) {
+            cCodeEditor.setValue(tests[selectedTest].code);
+            showStatus(`📝 Loaded ${tests[selectedTest].description}`, 'info');
+        } else {
+            showStatus('❌ Code editor not initialized', 'error');
+        }
+    } else {
+        showStatus(`❌ Test '${selectedTest}' not found`, 'error');
+    }
+}
+
+async function runAllTestsInCategory(category) {
+    const testsInCategory = testCategories[category];
+    
+    if (!testsInCategory || testsInCategory.length === 0) {
+        showStatus('❌ No tests found in this category', 'error');
+        return;
+    }
+    
+    // Filter out non-predefined tests
+    const validTests = testsInCategory.filter(test => test !== 'current-code' && test !== 'custom');
+    totalTests = validTests.length;
+    testProgress = 0;
+    
+    showStatus(`🧪 Running all ${category} tests...`, 'info');
+    
+    const testResults = document.getElementById('test-results');
+    testResults.innerHTML += `\n${'='.repeat(50)}
+🧪 ${category.toUpperCase()} TEST CATEGORY STARTED
+${'='.repeat(50)}`;
+    
+    let passed = 0;
+    let failed = 0;
+    
+    for (const testName of validTests) {
+        try {
+            testProgress++;
+            updateTestProgress(testProgress, totalTests);
+            
+            showStatus(`🧪 Running ${category} test: ${testName}... (${testProgress}/${totalTests})`, 'info');
+            
+            const testData = tests[testName];
+            if (!testData) {
+                throw new Error(`Test ${testName} not found`);
+            }
+            
+            // Load test code
+            if (cCodeEditor) {
+                cCodeEditor.setValue(testData.code);
+            }
+            
+            // Small delay to allow UI update
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Compile the test code
+            await compileAndDisasm();
+            
+            if (!compiledHex) {
+                throw new Error('Compilation failed');
+            }
+            
+            // Execute and get result with test-specific timeout
+            const testTimeout = testData.timeout || 30000;
+            const actualValue = await executeCodeAndGetResult(testTimeout);
+            
+            // Check result
+            const isPass = actualValue === testData.expected;
+            const badge = isPass ? '<span class="badge badge-success">PASS</span>' : '<span class="badge badge-error">FAIL</span>';
+            const timestamp = new Date().toLocaleTimeString();
+            
+            testResults.innerHTML += `\n[${timestamp}] 🧪 ${testName.toUpperCase()}: ${testData.description}
+Expected: ${testData.expected} | Actual: ${actualValue} ${badge}`;
+            
+            if (isPass) {
+                passed++;
+            } else {
+                failed++;
+            }
+            
+        } catch (error) {
+            const timestamp = new Date().toLocaleTimeString();
+            testResults.innerHTML += `\n[${timestamp}] 🧪 ${testName.toUpperCase()}: Test failed
+Expected: ${tests[testName]?.expected || 'N/A'} | Actual: ERROR - ${error.message} <span class="badge badge-error">FAIL</span>`;
+            failed++;
+        }
+        
+        testResults.scrollTop = testResults.scrollHeight;
+        
+        // Small delay between tests
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    // Category summary with badges
+    const successRate = totalTests > 0 ? ((passed / totalTests) * 100).toFixed(1) : 0;
+    const summaryBadge = failed === 0 ? '<span class="badge badge-success">ALL PASSED</span>' : '<span class="badge badge-warning">SOME FAILED</span>';
+    
+    testResults.innerHTML += `\n${'='.repeat(50)}
+🧪 ${category.toUpperCase()} CATEGORY COMPLETED ${summaryBadge}
+✅ Passed: ${passed} | ❌ Failed: ${failed} | 📊 Total: ${passed + failed}
+📈 Success Rate: ${successRate}%
+${'='.repeat(50)}`;
+    testResults.scrollTop = testResults.scrollHeight;
+    
+    const overallStatus = failed === 0 ? 'success' : 'error';
+    showStatus(`${category} tests completed: ${passed} passed, ${failed} failed (${successRate}% success)`, overallStatus);
+}
+
+// Testing functions
+async function runSingleTest() {
+    const expectedValue = parseInt(document.getElementById('expected-value').value);
+    const description = document.getElementById('test-description').value || 'Current code';
+    
+    if (isNaN(expectedValue)) {
+        showStatus('❌ Please enter a valid expected return value', 'error');
+        return;
+    }
+    
+    showStatus('🧪 Running single test...', 'info');
+    
+    try {
+        // Compile the current code
+        await compileAndDisasm();
+        
+        if (!compiledHex) {
+            throw new Error('Compilation failed');
+        }
+        
+        // Execute the code and get result with default timeout
+        const actualValue = await executeCodeAndGetResult(15000);
+        
+        // Display test result
+        const testResults = document.getElementById('test-results');
+        const status = actualValue === expectedValue ? '✅ PASS' : '❌ FAIL';
+        const timestamp = new Date().toLocaleTimeString();
+        
+        testResults.innerHTML += `\n[${timestamp}] 🧪 Test: ${description}
+Expected: ${expectedValue}
+Actual: ${actualValue} (RAX register value after execution)
+Status: ${status}
+---`;
+        testResults.scrollTop = testResults.scrollHeight;
+        
+        showStatus(`Test ${status === '✅ PASS' ? 'PASSED' : 'FAILED'}: ${description}`, 
+                   status === '✅ PASS' ? 'success' : 'error');
+        
+    } catch (error) {
+        const testResults = document.getElementById('test-results');
+        const timestamp = new Date().toLocaleTimeString();
+        testResults.innerHTML += `\n[${timestamp}] 🧪 Test: ${description}
+Expected: ${expectedValue}
+Actual: ERROR - ${error.message}
+Status: ❌ FAIL
+---`;
+        testResults.scrollTop = testResults.scrollHeight;
+        showStatus(`Test FAILED: ${error.message}`, 'error');
+    }
+}
+
+async function runTests() {
+    showStatus('🧪 Running all predefined tests...', 'info');
+    
+    const testResults = document.getElementById('test-results');
+    testResults.innerHTML += `\n${'='.repeat(50)}
+🧪 AUTOMATED TEST SUITE STARTED
+${'='.repeat(50)}`;
+    
+    let passed = 0;
+    let failed = 0;
+    
+    for (const [testName, testData] of Object.entries(tests)) {
+        try {
+            showStatus(`🧪 Running test: ${testName}...`, 'info');
+            
+            // Load test code
+            if (cCodeEditor) {
+                cCodeEditor.setValue(testData.code);
+            }
+            
+            // Small delay to allow UI update
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Compile the test code
+            await compileAndDisasm();
+            
+            if (!compiledHex) {
+                throw new Error('Compilation failed');
+            }
+            
+            // Execute and get result with custom timeout
+            const testTimeout = testData.timeout || 30000;
+            let actualValue;
+            let isTimeout = false;
+            
+            try {
+                actualValue = await executeCodeAndGetResult(testTimeout);
+            } catch (timeoutError) {
+                if (timeoutError.message.includes('timeout')) {
+                    isTimeout = true;
+                    actualValue = 'TIMEOUT';
+                } else {
+                    throw timeoutError; // Re-throw non-timeout errors
+                }
+            }
+            
+            // Check result - handle special timeout test cases
+            let status;
+            let statusIcon;
+            
+            if (testData.shouldTimeout) {
+                // This test is expected to timeout
+                if (isTimeout) {
+                    status = '✅ PASS (Expected Timeout)';
+                    statusIcon = '✅ PASS';
+                    passed++;
+                } else {
+                    status = '❌ FAIL (Should have timed out)';
+                    statusIcon = '❌ FAIL';
+                    failed++;
+                }
+            } else {
+                // Normal test case
+                if (isTimeout) {
+                    status = '❌ FAIL (Unexpected Timeout)';
+                    statusIcon = '❌ FAIL';
+                    failed++;
+                } else if (actualValue === testData.expected) {
+                    status = '✅ PASS';
+                    statusIcon = '✅ PASS';
+                    passed++;
+                } else {
+                    status = '❌ FAIL';
+                    statusIcon = '❌ FAIL';
+                    failed++;
+                }
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const expectedDisplay = testData.shouldTimeout ? 'TIMEOUT' : testData.expected;
+            
+            testResults.innerHTML += `\n[${timestamp}] 🧪 ${testName.toUpperCase()}: ${testData.description}
+Expected: ${expectedDisplay}
+Actual: ${actualValue}
+Status: ${status}`;
+            
+        } catch (error) {
+            const timestamp = new Date().toLocaleTimeString();
+            testResults.innerHTML += `\n[${timestamp}] 🧪 ${testName.toUpperCase()}: ${testData.description}
+Expected: ${testData.expected}
+Actual: ERROR - ${error.message}
+Status: ❌ FAIL`;
+            failed++;
+        }
+        
+        testResults.scrollTop = testResults.scrollHeight;
+        
+        // Small delay between tests
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    // Final summary
+    testResults.innerHTML += `\n${'='.repeat(50)}
+🧪 TEST SUITE COMPLETED
+✅ Passed: ${passed}
+❌ Failed: ${failed}
+📊 Total: ${passed + failed}
+${'='.repeat(50)}`;
+    testResults.scrollTop = testResults.scrollHeight;
+    
+    const overallStatus = failed === 0 ? 'success' : 'error';
+    showStatus(`Tests completed: ${passed} passed, ${failed} failed`, overallStatus);
+}
+
+// Execute compiled code and return the final RAX value
+async function executeCodeAndGetResult(timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+        let executionTimeout;
+        let isCompleted = false;
+        
+        // Set up timeout to cancel execution if it takes too long
+        executionTimeout = setTimeout(() => {
+            if (!isCompleted) {
+                isCompleted = true;
+                reject(new Error(`Execution timeout after ${timeoutMs}ms (possible infinite loop)`));
+            }
+        }, timeoutMs);
+        
+        try {
+            // Initialize debugger with current compiled code
+            debugInit();
+            
+            // Give debugger time to initialize
+            setTimeout(() => {
+                try {
+                    // Execute all instructions until completion
+                    let maxSteps = 50000; // Increased safety limit
+                    let stepCount = 0;
+                    
+                    function executeStep() {
+                        try {
+                            if (isCompleted) return; // Stop if already completed/timed out
+                            
+                            if (stepCount >= maxSteps) {
+                                if (!isCompleted) {
+                                    isCompleted = true;
+                                    clearTimeout(executionTimeout);
+                                    reject(new Error('Execution exceeded maximum steps (possible infinite loop)'));
+                                }
+                                return;
+                            }
+                            
+                            if (!stepDebugger || !stepDebugger.isInitialized) {
+                                if (!isCompleted) {
+                                    isCompleted = true;
+                                    clearTimeout(executionTimeout);
+                                    reject(new Error('Debugger not initialized'));
+                                }
+                                return;
+                            }
+                            
+                            // Get current RIP to check if we're done
+                            const currentRIP = e.reg_read_i64(uc.X86_REG_RIP);
+                            
+                            // If RIP is 0, execution is complete
+                            if (currentRIP === 0) {
+                                if (!isCompleted) {
+                                    isCompleted = true;
+                                    clearTimeout(executionTimeout);
+                                    const finalResult = e.reg_read_i32(uc.X86_REG_RAX);
+                                    resolve(finalResult);
+                                }
+                                return;
+                            }
+                            
+                            // Check if we have a valid instruction at current RIP
+                            const currentInst = stepDebugger.findInstructionAtAddress(currentRIP);
+                            if (!currentInst) {
+                                if (!isCompleted) {
+                                    isCompleted = true;
+                                    clearTimeout(executionTimeout);
+                                    // No instruction found, likely execution is complete
+                                    const finalResult = e.reg_read_i32(uc.X86_REG_RAX);
+                                    resolve(finalResult);
+                                }
+                                return;
+                            }
+                            
+                            // Execute one step
+                            stepDebugger.stepNext();
+                            stepCount++;
+                            
+                            // Continue execution with small delay to prevent blocking
+                            setTimeout(executeStep, 1);
+                            
+                        } catch (error) {
+                            // If step execution fails, try to get the return value
+                            try {
+                                const finalResult = e.reg_read_i32(uc.X86_REG_RAX);
+                                resolve(finalResult);
+                            } catch (regError) {
+                                reject(new Error(`Execution failed: ${error.message}`));
+                            }
+                        }
+                    }
+                    
+                    // Start execution
+                    executeStep();
+                    
+                } catch (error) {
+                    reject(new Error(`Failed to start execution: ${error.message}`));
+                }
+            }, 200); // Give debugger time to initialize
+            
+        } catch (error) {
+            reject(new Error(`Failed to initialize debugger: ${error.message}`));
+        }
+    });
+}
+
+// Run current code as a test (without needing expected value)
+async function runCurrentCodeTest() {
+    const description = document.getElementById('test-description').value || 'Current code in editor';
+    
+    showStatus('🧪 Testing current code...', 'info');
+    
+    try {
+        // Compile the current code
+        await compileAndDisasm();
+        
+        if (!compiledHex) {
+            throw new Error('Compilation failed');
+        }
+        
+        // Execute the code and get result with default timeout
+        const actualValue = await executeCodeAndGetResult(15000);
+        
+        // Display test result
+        const testResults = document.getElementById('test-results');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        testResults.innerHTML += `\n[${timestamp}] 🧪 Test: ${description}
+Code executed successfully!
+Return value (RAX): ${actualValue}
+Status: ✅ EXECUTED
+---`;
+        testResults.scrollTop = testResults.scrollHeight;
+        
+        showStatus(`Code executed successfully! Return value: ${actualValue}`, 'success');
+        
+        // Auto-fill the expected value field for convenience
+        document.getElementById('expected-value').value = actualValue;
+        
+    } catch (error) {
+        const testResults = document.getElementById('test-results');
+        const timestamp = new Date().toLocaleTimeString();
+        testResults.innerHTML += `\n[${timestamp}] 🧪 Test: ${description}
+Execution failed: ${error.message}
+Status: ❌ ERROR
+---`;
+        testResults.scrollTop = testResults.scrollHeight;
+        showStatus(`Execution failed: ${error.message}`, 'error');
+    }
+}
+
+function clearTestResults() {
+    document.getElementById('test-results').innerHTML = '<strong>>> TEST RESULTS WILL APPEAR HERE...</strong>';
+}
+
+// Initialize CodeMirror editors when page loads
+document.addEventListener('DOMContentLoaded', async function() {
+    // Initialize theme
+    initializeTheme();
+    
+    // Initialize C code editor
+    const editorElement = document.getElementById('editor');
+    if (editorElement) {
+        cCodeEditor = CodeMirror.fromTextArea(editorElement, {
+            mode: 'text/x-csrc',
+            theme: 'dracula',
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false
+        });
+    }
+    
+    // Initialize hex output editor
+    const hexElement = document.getElementById('hex-editor');
+    if (hexElement) {
+        hexEditor = CodeMirror.fromTextArea(hexElement, {
+            mode: 'text/plain',
+            theme: 'dracula',
+            lineNumbers: false,
+            readOnly: true,
+            lineWrapping: true
+        });
+    }
+    
+    // Assembly is now displayed in the interactive table in the Code Development section
+    
+    // Initialize resizable panels
+    initializeResizablePanels();
+    
+    // Initialize status indicators
+    updateStatusIndicator('editor-status', 'success');
+    updateStatusIndicator('hex-status', 'warning');
+    updateStatusIndicator('asm-status', 'warning');
+    
+    showStatus('🚀 CAP System Ready! Enhanced UI with responsive design and advanced testing.', 'success');
+    
+    // Try to initialize TCC compilation modules
+    await initializeModules();
+});
+
+// C Code to Assembly Line Mapping System
+const codeLineMapper = {
+    currentCCode: '',
+    assemblyInstructions: [],
+    lineMapping: new Map(), // Maps assembly address to C line number
+    
+    // Parse C code and create line mappings
+    parseCCode: function(cCode) {
+        this.currentCCode = cCode;
+        const lines = cCode.split('\n');
+        const mapping = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            const lineNum = i + 1;
+            
+            // Skip empty lines and comments
+            if (!line || line.startsWith('//') || line.startsWith('/*')) {
+                continue;
+            }
+            
+            // Identify different types of C statements
+            const statementType = this.identifyStatement(line);
+            mapping.push({
+                lineNumber: lineNum,
+                content: line,
+                type: statementType,
+                originalLine: lines[i]
+            });
+        }
+        
+        return mapping;
+    },
+    
+    // Identify the type of C statement
+    identifyStatement: function(line) {
+        // Function declarations (prototypes) - have semicolon at end
+        if (line.includes('(') && line.includes(')') && line.includes(';') && !line.includes('=') && !line.includes('return')) {
+            return 'function_declaration';
+        }
+        // Function definitions - have opening brace or no semicolon
+        // FIXED: Exclude C control structures (for, while, if, etc.)
+        var cKeywords = ['for', 'while', 'if', 'else', 'switch', 'case', 'do'];
+        var startsWithKeyword = cKeywords.some(keyword => line.trim().startsWith(keyword + ' ') || line.trim().startsWith(keyword + '('));
+        
+        // Also check if this looks like a function declaration (return_type func_name(...))
+        var functionPattern = /^\s*(?:int|char|float|double|void|long|short|unsigned|signed)\s+\w+\s*\([^)]*\)\s*$/;
+        
+        if ((line.includes('(') && line.includes(')') && (line.includes('{') || !line.includes(';')) && !startsWithKeyword) || 
+            (functionPattern.test(line) && !startsWithKeyword)) {
+            return 'function_def';
+        }
+        // Return statements
+        if (line.startsWith('return ')) {
+            return 'return';
+        }
+        // Variable declarations/assignments
+        if (line.includes('=') && line.includes(';')) {
+            return 'assignment';
+        }
+        // Function calls
+        if (line.includes('(') && line.includes(')') && line.includes(';')) {
+            return 'function_call';
+        }
+        // Control flow
+        if (line.startsWith('if ') || line.startsWith('if(')) {
+            return 'if_statement';
+        }
+        if (line.startsWith('for ') || line.startsWith('for(')) {
+            return 'for_loop';
+        }
+        if (line.startsWith('while ') || line.startsWith('while(')) {
+            return 'while_loop';
+        }
+        // Braces
+        if (line === '{' || line === '}') {
+            return 'brace';
+        }
+        
+        return 'other';
+    },
+    
+    // Create mapping between assembly addresses and C lines
+    createAddressMapping: function(assemblyInstructions, cStatements) {
+        this.lineMapping.clear();
+        this.assemblyInstructions = assemblyInstructions;
+        this.functionRanges = new Map(); // Track function address ranges
+        
+        if (!assemblyInstructions.length || !cStatements.length) {
+            console.log('❌ Cannot create mapping: no assembly instructions or C statements');
+            return;
+        }
+        
+        console.log('🔗 Creating C-to-Assembly function mapping...');
+        console.log(`📊 Input: ${assemblyInstructions.length} assembly instructions, ${cStatements.length} C statements`);
+        
+        // Find C function definitions
+        const cFunctions = cStatements.filter(stmt => stmt.type === 'function_def');
+        console.log(`🔧 Found ${cFunctions.length} C functions:`);
+        cFunctions.forEach(func => {
+            console.log(`  📝 ${func.content} at line ${func.lineNumber}`);
+        });
+        
+        // Detect assembly function boundaries using dynamic boundary detection
+        console.log('\n🔍 Detecting assembly function boundaries...');
+        const functionBoundaries = this.detectAssemblyFunctionBoundaries(assemblyInstructions);
+        
+        console.log(`🔧 Found ${functionBoundaries.length} assembly functions:`);
+        functionBoundaries.forEach((boundary, idx) => {
+            console.log(`  📍 Function ${idx}: addresses 0x${boundary.startAddr.toString(16)} - 0x${boundary.endAddr.toString(16)}`);
+        });
+        
+        // Map assembly functions to C functions
+        if (functionBoundaries.length === cFunctions.length) {
+            console.log('\n🔗 Mapping assembly functions to C functions:');
+            for (let i = 0; i < functionBoundaries.length; i++) {
+                const asmFunc = functionBoundaries[i];
+                const cFunc = cFunctions[i];
+                
+                console.log(`  🎯 Assembly function 0x${asmFunc.startAddr.toString(16)}-0x${asmFunc.endAddr.toString(16)} → C function "${cFunc.content}" (lines ${cFunc.lineNumber}-${this.findFunctionEndLine(cFunc, cStatements)})`);
+                
+                // Store function range for highlighting
+                this.functionRanges.set(asmFunc.startAddr, {
+                    startLine: cFunc.lineNumber,
+                    endLine: this.findFunctionEndLine(cFunc, cStatements),
+                    name: this.extractFunctionName(cFunc.content)
+                });
+                
+                // Map all addresses in this function to the C function range
+                for (let j = 0; j < assemblyInstructions.length; j++) {
+                    const instruction = assemblyInstructions[j];
+                    const address = instruction.getAddress ? instruction.getAddress() : (instruction.nodeAddr ? parseInt(instruction.nodeAddr.innerHTML, 16) : null);
+                    
+                    if (address >= asmFunc.startAddr && address <= asmFunc.endAddr) {
+                        this.lineMapping.set(address, {
+                            functionStart: cFunc.lineNumber,
+                            functionEnd: this.findFunctionEndLine(cFunc, cStatements),
+                            functionName: this.extractFunctionName(cFunc.content)
+                        });
+                    }
+                }
+            }
+        } else {
+            console.log(`⚠️ Mismatch: ${functionBoundaries.length} assembly functions vs ${cFunctions.length} C functions`);
+            console.log('🔄 Falling back to simple mapping...');
+            
+            // Fallback: map everything to first function if available
+            if (cFunctions.length > 0) {
+                const fallbackFunc = cFunctions[0];
+                for (let i = 0; i < assemblyInstructions.length; i++) {
+                    const instruction = assemblyInstructions[i];
+                    const address = instruction.getAddress ? instruction.getAddress() : (instruction.nodeAddr ? parseInt(instruction.nodeAddr.innerHTML, 16) : null);
+                    
+                    if (address !== null) {
+                        this.lineMapping.set(address, {
+                            functionStart: fallbackFunc.lineNumber,
+                            functionEnd: this.findFunctionEndLine(fallbackFunc, cStatements),
+                            functionName: this.extractFunctionName(fallbackFunc.content)
+                        });
+                    }
+                }
+            }
+        }
+        
+        console.log('\n✅ Function-level mapping complete!');
+        console.log(`📈 Mapped ${this.lineMapping.size} assembly addresses to C functions`);
+    },
+    
+    // Detect assembly function boundaries dynamically
+    detectAssemblyFunctionBoundaries: function(assemblyInstructions) {
+        const boundaries = [];
+        let currentFunctionStart = null;
+        
+        for (let i = 0; i < assemblyInstructions.length; i++) {
+            const instruction = assemblyInstructions[i];
+            const asmText = instruction.assembly || instruction.dataAsm || instruction.instruction || 'unknown';
+            const address = instruction.getAddress ? instruction.getAddress() : (instruction.nodeAddr ? parseInt(instruction.nodeAddr.innerHTML, 16) : null);
+            
+            // Detect function prologue (push rbp)
+            if (asmText.includes('push rbp')) {
+                // End previous function if we found one
+                if (currentFunctionStart !== null && i > 0) {
+                    const prevInstruction = assemblyInstructions[i - 1];
+                    const prevAddress = prevInstruction.getAddress ? prevInstruction.getAddress() : (prevInstruction.nodeAddr ? parseInt(prevInstruction.nodeAddr.innerHTML, 16) : null);
+                    if (prevAddress !== null) {
+                        boundaries.push({
+                            startAddr: currentFunctionStart,
+                            endAddr: prevAddress
+                        });
+                    }
+                }
+                
+                // Start new function
+                currentFunctionStart = address;
+            }
+        }
+        
+        // Close the last function
+        if (currentFunctionStart !== null && assemblyInstructions.length > 0) {
+            const lastInstruction = assemblyInstructions[assemblyInstructions.length - 1];
+            const lastAddress = lastInstruction.getAddress ? lastInstruction.getAddress() : (lastInstruction.nodeAddr ? parseInt(lastInstruction.nodeAddr.innerHTML, 16) : null);
+            if (lastAddress !== null) {
+                boundaries.push({
+                    startAddr: currentFunctionStart,
+                    endAddr: lastAddress
+                });
+            }
+        }
+        
+        return boundaries;
+    },
+    
+    // Find the end line of a C function
+    findFunctionEndLine: function(funcStatement, allStatements) {
+        const startLine = funcStatement.lineNumber;
+        
+        // Find the matching closing brace
+        for (let i = 0; i < allStatements.length; i++) {
+            const stmt = allStatements[i];
+            if (stmt.lineNumber > startLine && stmt.type === 'brace' && stmt.content.trim() === '}') {
+                return stmt.lineNumber;
+            }
+        }
+        
+        // Fallback: assume function is 10 lines long
+        return startLine + 10;
+    },
+    
+    // Extract function name from function definition
+    extractFunctionName: function(functionDef) {
+        const match = functionDef.match(/(\w+)\s*\(/);
+        return match ? match[1] : 'unknown';
+    },
+    
+    // Current highlighted function tracking
+    currentHighlightedFunction: null,
+    
+    // Highlight entire C function corresponding to assembly address
+    highlightCLine: function(assemblyAddress) {
+        console.log(`\n🎯 === FUNCTION HIGHLIGHTING === Address: 0x${assemblyAddress.toString(16)} ===`);
+        
+        // Find the assembly instruction for this address
+        const assemblyInst = this.assemblyInstructions.find(inst => {
+            const addr = inst.address || inst.addr || (inst.nodeAddr ? parseInt(inst.nodeAddr.textContent, 16) : null);
+            return addr === assemblyAddress;
+        });
+        
+        const asmText = assemblyInst ? (assemblyInst.assembly || assemblyInst.dataAsm || assemblyInst.instruction || 'unknown') : 'instruction not found';
+        console.log(`🔧 Assembly instruction: "${asmText}"`);
+        
+        const functionInfo = this.lineMapping.get(assemblyAddress);
+        console.log(`📍 Mapping lookup: 0x${assemblyAddress.toString(16)} → Function`, functionInfo);
+        
+        if (functionInfo && cCodeEditor) {
+            // Check if we're entering a different function or staying in the same one
+            const currentFunctionName = functionInfo.functionName;
+            
+            if (this.currentHighlightedFunction !== currentFunctionName) {
+                console.log(`🔄 Function transition: "${this.currentHighlightedFunction}" → "${currentFunctionName}"`);
+                
+                // Clear previous highlighting
+                this.clearCActiveHighlight();
+                
+                // Highlight the new function
+                for (let line = functionInfo.functionStart - 1; line < functionInfo.functionEnd; line++) {
+                    cCodeEditor.addLineClass(line, 'background', 'c-function-highlight-active');
+                }
+                
+                // Update current function tracking
+                this.currentHighlightedFunction = currentFunctionName;
+                
+                console.log(`📝 Now highlighting C function "${currentFunctionName}" (lines ${functionInfo.functionStart}-${functionInfo.functionEnd})`);
+                console.log(`🔗 CORRESPONDENCE: "${asmText}" ↔ function "${currentFunctionName}"`);
+                
+                // Scroll to function start
+                cCodeEditor.scrollIntoView({line: functionInfo.functionStart - 1, ch: 0});
+                
+                console.log(`✅ Successfully highlighted C function "${currentFunctionName}"`);
+            } else {
+                console.log(`📌 Staying in function "${currentFunctionName}" - no highlight change needed`);
+            }
+        } else if (!functionInfo) {
+            console.log(`❌ No mapping found for address 0x${assemblyAddress.toString(16)} - clearing highlights`);
+            
+            // Clear highlighting when we're not in any mapped function
+            if (this.currentHighlightedFunction !== null) {
+                this.clearCActiveHighlight();
+                this.currentHighlightedFunction = null;
+                console.log(`🧹 Cleared highlighting - no longer in any function`);
+            }
+        } else if (!cCodeEditor) {
+            console.log(`❌ cCodeEditor not available`);
+        }
+        
+        console.log(`=== END HIGHLIGHTING DEBUG ===\n`);
+    },
+    
+    // Clear C code highlighting
+    clearCHighlight: function() {
+        if (cCodeEditor) {
+            const lineCount = cCodeEditor.lineCount();
+            for (let i = 0; i < lineCount; i++) {
+                cCodeEditor.removeLineClass(i, 'background', 'c-line-highlight');
+                cCodeEditor.removeLineClass(i, 'background', 'c-function-highlight-active');
+            }
+        }
+    },
+    
+    // Clear active highlighting only
+    clearCActiveHighlight: function() {
+        if (cCodeEditor) {
+            const lineCount = cCodeEditor.lineCount();
+            for (let i = 0; i < lineCount; i++) {
+                cCodeEditor.removeLineClass(i, 'background', 'c-function-highlight-active');
+            }
+        }
+    },
+    
+    // Clear C code highlighting
+    clearCHighlight: function() {
+        if (cCodeEditor) {
+            const lineCount = cCodeEditor.lineCount();
+            for (let i = 0; i < lineCount; i++) {
+                cCodeEditor.removeLineClass(i, 'background', 'c-line-highlight');
+                cCodeEditor.removeLineClass(i, 'background', 'c-line-highlight-hover');
+                cCodeEditor.removeLineClass(i, 'background', 'c-line-highlight-active');
+                cCodeEditor.removeLineClass(i, 'background', 'c-function-highlight-active');
+            }
+        }
+        this.currentHighlightedFunction = null;
+    },
+    
+    // Godbolt-style hover highlighting for C lines
+    highlightCLineHover: function(assemblyAddress) {
+        const cLineNumber = this.lineMapping.get(assemblyAddress);
+        if (cLineNumber && cCodeEditor) {
+            this.clearCHoverHighlight();
+            const lineIndex = cLineNumber - 1;
+            cCodeEditor.addLineClass(lineIndex, 'background', 'c-line-highlight-hover');
+        }
+    },
+    
+    // Clear hover highlighting
+    clearCHoverHighlight: function() {
+        if (cCodeEditor) {
+            const lineCount = cCodeEditor.lineCount();
+            for (let i = 0; i < lineCount; i++) {
+                cCodeEditor.removeLineClass(i, 'background', 'c-line-highlight-hover');
+            }
+        }
+    },
+    
+    // Active highlighting (for current execution)
+    highlightCLineActive: function(assemblyAddress) {
+        const cLineNumber = this.lineMapping.get(assemblyAddress);
+        if (cLineNumber && cCodeEditor) {
+            this.clearCActiveHighlight();
+            const lineIndex = cLineNumber - 1;
+            cCodeEditor.addLineClass(lineIndex, 'background', 'c-line-highlight-active');
+            cCodeEditor.scrollIntoView({line: lineIndex, ch: 0});
+        }
+    },
+    
+    // Clear active highlighting
+    clearCActiveHighlight: function() {
+        if (cCodeEditor) {
+            const lineCount = cCodeEditor.lineCount();
+            for (let i = 0; i < lineCount; i++) {
+                cCodeEditor.removeLineClass(i, 'background', 'c-line-highlight-active');
+            }
+        }
+    },
+    
+    // Initialize mapping when code is compiled
+    initializeMapping: function() {
+        console.log('🔍 Initializing C code mapping...');
+        
+        if (!cCodeEditor) {
+            console.log('❌ cCodeEditor not available');
+            return;
+        }
+        
+        const cCode = cCodeEditor.getValue();
+        console.log('📝 C Code length:', cCode.length);
+        
+        const cStatements = this.parseCCode(cCode);
+        console.log('📋 Parsed C statements:', cStatements);
+        
+        // Get assembly instructions from the current debug session
+        if (paneAssembler && paneAssembler.instructions) {
+            console.log('⚙️ Assembly instructions available:', paneAssembler.instructions.length);
+            console.log('🔍 First instruction structure:', paneAssembler.instructions[0]);
+            this.createAddressMapping(paneAssembler.instructions, cStatements);
+        } else {
+            console.log('❌ No assembly instructions available');
+            console.log('🔍 Checking paneAssembler:', typeof paneAssembler, paneAssembler);
+        }
+    },
+    
+    // Debug function to manually test highlighting
+    testHighlight: function(lineNumber) {
+        console.log('🧪 Testing C code highlighting on line:', lineNumber);
+        if (cCodeEditor) {
+            this.clearCHighlight();
+            const lineIndex = lineNumber - 1;
+            cCodeEditor.addLineClass(lineIndex, 'background', 'c-line-highlight');
+            console.log('✅ Test highlight applied');
+        } else {
+            console.log('❌ cCodeEditor not available for test');
+        }
+    }
+};
+
+// Expose debug functions globally
+window.testCHighlight = function(lineNumber) {
+    codeLineMapper.testHighlight(lineNumber);
+};
+
+// Test the mapping and highlighting system
+window.testMappingAndHighlighting = function() {
+    console.log('🧪 Testing mapping and highlighting system...');
+    
+    if (typeof codeLineMapper === 'undefined') {
+        console.log('❌ codeLineMapper not available');
+        return;
+    }
+    
+    console.log('📊 Current mapping size:', codeLineMapper.lineMapping.size);
+    console.log('📊 Available mappings:');
+    Array.from(codeLineMapper.lineMapping.entries()).forEach(([addr, line]) => {
+        console.log(`  0x${addr.toString(16)} → Line ${line}`);
+    });
+    
+    // Test highlighting the first mapped line
+    if (codeLineMapper.lineMapping.size > 0) {
+        const firstMapping = Array.from(codeLineMapper.lineMapping.entries())[0];
+        const [address, lineNumber] = firstMapping;
+        console.log(`🎯 Testing highlight on address 0x${address.toString(16)} → Line ${lineNumber}`);
+        codeLineMapper.highlightCLine(address);
+    } else {
+        console.log('❌ No mappings available to test');
+    }
+};
+
+window.debugMapping = function() {
+    console.log('\n🔍 === DEBUG MAPPING INFORMATION ===');
+    console.log('cCodeEditor:', typeof cCodeEditor, cCodeEditor);
+    console.log('paneAssembler:', typeof paneAssembler, paneAssembler);
+    console.log('Current mapping size:', codeLineMapper.lineMapping.size);
+    codeLineMapper.initializeMapping();
+};
+
+// New function to show complete correspondence table
+window.showCorrespondenceTable = function() {
+    console.log('\n📊 === COMPLETE C-TO-ASSEMBLY CORRESPONDENCE TABLE ===');
+    
+    if (!codeLineMapper.lineMapping.size) {
+        console.log('❌ No mapping available. Run debugMapping() first or start a debug session.');
+        return;
+    }
+    
+    const mappingArray = Array.from(codeLineMapper.lineMapping.entries());
+    const cCodeLines = cCodeEditor ? cCodeEditor.getValue().split('\n') : [];
+    
+    console.log(`📊 Found ${mappingArray.length} mappings:`);
+    console.log('\n🔗 ADDRESS    | ASSEMBLY INSTRUCTION           | C LINE | C CODE CONTENT');
+    console.log('====================================================================================');
+    
+    mappingArray.forEach(([addr, lineNum]) => {
+        // Find the assembly instruction
+        const assemblyInst = codeLineMapper.assemblyInstructions.find(inst => {
+            const instAddr = inst.address || inst.addr || (inst.nodeAddr ? parseInt(inst.nodeAddr.textContent, 16) : null);
+            return instAddr === addr;
+        });
+        
+        const asmText = assemblyInst ? (assemblyInst.assembly || assemblyInst.dataAsm || assemblyInst.instruction || 'unknown') : 'not found';
+        const cLineContent = cCodeLines[lineNum - 1] || 'line not found';
+        
+        console.log(`0x${addr.toString(16).padStart(8, '0')} | ${asmText.padEnd(30)} | ${lineNum.toString().padStart(6)} | ${cLineContent.trim()}`);
+    });
+    
+    console.log('====================================================================================');
+    console.log(`📈 Total: ${mappingArray.length} assembly instructions mapped to C lines`);
+    console.log('=== END CORRESPONDENCE TABLE ===\n');
+};
+
+// Function to show only specific address mapping
+window.showAddressMapping = function(address) {
+    console.log(`\n🔍 === ADDRESS MAPPING FOR 0x${address.toString(16)} ===`);
+    
+    const cLineNumber = codeLineMapper.lineMapping.get(address);
+    if (!cLineNumber) {
+        console.log(`❌ No mapping found for address 0x${address.toString(16)}`);
+        return;
+    }
+    
+    const assemblyInst = codeLineMapper.assemblyInstructions.find(inst => {
+        const instAddr = inst.address || inst.addr || (inst.nodeAddr ? parseInt(inst.nodeAddr.textContent, 16) : null);
+        return instAddr === address;
+    });
+    
+    const asmText = assemblyInst ? (assemblyInst.assembly || assemblyInst.dataAsm || assemblyInst.instruction || 'unknown') : 'not found';
+    const cCodeLines = cCodeEditor ? cCodeEditor.getValue().split('\n') : [];
+    const cLineContent = cCodeLines[cLineNumber - 1] || 'line not found';
+    
+    console.log(`📍 Address: 0x${address.toString(16)}`);
+    console.log(`🔧 Assembly: "${asmText}"`);
+    console.log(`📝 C Line ${cLineNumber}: "${cLineContent.trim()}"`);
+    console.log(`🔗 CORRESPONDENCE: "${asmText}" ↔ "${cLineContent.trim()}"`);
+    console.log('=== END ADDRESS MAPPING ===\n');
+};
+
+// Initialize C line highlighting for step debugging
+$(document).ready(function() {
+    console.log('🎯 C line highlighting ready for step debugging');
+});
+</script>
+
+</body>
+</html>
