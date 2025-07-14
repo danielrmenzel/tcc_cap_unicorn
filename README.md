@@ -121,15 +121,148 @@ assembly_web_app_3/
 ## 🚀 Getting Started
 
 ### **Prerequisites**
-- Modern web browser with WebAssembly support
-- Python 3.x (for development server)
+- Modern web browser with WebAssembly support (Chrome, Firefox, Safari, Edge)
+- Python 3.x (for local development server)
+- Internet connection (only for CodeMirror CSS/JS from CDN)
 
-### **Running the Application**
+## 📦 Deployment Options
+
+### **Option 1: Direct Download/Clone (Recommended)**
+
+#### **For Git Users:**
 ```bash
-cd assembly_web_app_3/app
+# Clone the repository
+git clone [repository-url]
+cd assembly_web_app_3
+
+# Start the server
+cd app
 python3 serve.py
 ```
-Then open `http://localhost:8000` in your browser.
+
+#### **For Direct Download:**
+1. Download the complete project folder
+2. Extract to your desired location
+3. Navigate to the `app` directory
+4. Run `python3 serve.py`
+
+### **Option 2: Alternative Server Methods**
+
+#### **Using Python's Built-in Server:**
+```bash
+cd assembly_web_app_3/app
+python3 -m http.server 8006
+```
+
+#### **Using Node.js (if available):**
+```bash
+cd assembly_web_app_3/app
+npx serve -p 8006
+```
+
+#### **Using PHP (if available):**
+```bash
+cd assembly_web_app_3/app
+php -S localhost:8006
+```
+
+### **Running the Application**
+
+1. **Start the server** using any method above
+2. **Open your browser** to `http://localhost:8006` (or the port you specified)
+3. **The application loads automatically** - no additional setup required!
+
+## 🌐 Browser Requirements
+
+### **Supported Browsers:**
+- ✅ **Chrome 57+** (Recommended)
+- ✅ **Firefox 52+** 
+- ✅ **Safari 11+**
+- ✅ **Edge 16+**
+
+### **Required Browser Features:**
+- WebAssembly support
+- ES6 JavaScript support
+- Local storage access
+- WebGL (for optimal performance)
+
+## 🔧 Deployment on Different Computers
+
+### **Complete Offline Setup (Optional)**
+
+To make the application completely offline:
+
+1. **Download CodeMirror locally:**
+   ```bash
+   cd assembly_web_app_3/app
+   mkdir codemirror
+   # Download CodeMirror 5.65.15 files to codemirror/
+   ```
+
+2. **Update index.html** to use local CodeMirror instead of CDN:
+   ```html
+   <!-- Replace CDN links with: -->
+   <link rel="stylesheet" href="codemirror/codemirror.css"/>
+   <script src="codemirror/codemirror.js"></script>
+   ```
+
+### **Network Deployment**
+
+#### **Local Network Access:**
+```bash
+# Allow access from other computers on network
+python3 -c "
+import http.server
+import socketserver
+httpd = socketserver.TCPServer(('0.0.0.0', 8006), http.server.SimpleHTTPRequestHandler)
+httpd.serve_forever()
+"
+```
+
+Then access via `http://[your-ip]:8006` from other computers.
+
+#### **Cloud Deployment (Nginx/Apache):**
+Simply copy the `app/` directory to your web server's document root.
+
+## 🚨 Troubleshooting
+
+### **Common Issues:**
+
+#### **Port Already in Use:**
+```bash
+# Try a different port
+python3 -m http.server 8007
+```
+
+#### **Permission Denied:**
+```bash
+# On some systems, try:
+python serve.py
+# or
+python3.x serve.py  # where x is your Python version
+```
+
+#### **Browser Compatibility:**
+- Ensure JavaScript is enabled
+- Try incognito/private mode
+- Clear browser cache and cookies
+- Update to latest browser version
+
+#### **WebAssembly Issues:**
+- Check browser console for error messages
+- Ensure all files are properly downloaded
+- Verify internet connection for CDN resources
+
+### **Performance Optimization:**
+
+#### **For Slower Computers:**
+- Use Chrome for best performance
+- Close other browser tabs
+- Ensure sufficient RAM (4GB+ recommended)
+
+#### **For Limited Internet:**
+- Set up offline CodeMirror (see above)
+- Cache the page after first load
 
 ### **Basic Usage**
 1. **Write C Code**: Enter your C program in the left editor
