@@ -245,6 +245,10 @@ temp/
 !app/externals/*.js
 !app/externals/*.min.js
 
+# Force include CodeMirror local files
+!app/codemirror/*.css
+!app/codemirror/*.js
+
 # Force include essential project files
 !README.md
 !ARCHITECTURE.md
