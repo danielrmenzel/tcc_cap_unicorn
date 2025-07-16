@@ -184,6 +184,15 @@
 
  /* Retro Button Styles */
  .button-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:15px}
+ .inline-status{margin-left:auto;padding:8px 16px;background:var(--bg-tertiary);border-radius:0;
+                border:2px solid var(--accent-green);display:none;font-size:12px;font-weight:bold;
+                text-transform:uppercase;letter-spacing:1px;text-shadow:var(--retro-glow);
+                transition:all 0.3s ease;box-shadow:var(--shadow);white-space:nowrap;
+                text-align:center;flex:1;overflow:hidden;text-overflow:ellipsis}
+ .inline-status.status-success{color:var(--accent-green);border-color:var(--accent-green)}
+ .inline-status.status-error{color:var(--accent-red);border-color:var(--accent-red)}
+ .inline-status.status-info{color:var(--accent-cyan);border-color:var(--accent-cyan)}
+ .inline-status.status-warning{color:var(--accent-yellow);border-color:var(--accent-yellow)}
  button{background:var(--bg-tertiary);color:var(--accent-green);border:2px solid var(--accent-green);
         padding:8px 12px;cursor:pointer;border-radius:0;font-size:12px;transition:all 0.3s ease;
         box-shadow:var(--shadow);font-weight:bold;text-transform:uppercase;letter-spacing:1px;
@@ -240,7 +249,8 @@
    .app-header{padding:15px 10px}
    .header-content{flex-direction:column;gap:10px;text-align:center}
    .main-content{padding:10px}
-   .button-row{justify-content:center}
+   .button-row{justify-content:flex-start;flex-wrap:wrap}
+   .inline-status{margin-left:auto;font-size:11px;flex:1}
    .floating-actions{bottom:15px;right:15px}
    .fab{width:50px;height:50px;font-size:20px}
    .test-category{padding:10px}
@@ -531,6 +541,9 @@
       <button class="help-btn" onclick="showHelp()" title="Help">
         <span>❓</span>
       </button>
+      <button class="help-btn" onclick="clearSavedCodeAndReload()" title="Clear Saved Code">
+        <span>🗑️</span>
+      </button>
     </div>
   </div>
 </header>
@@ -637,10 +650,10 @@ int main() {
         <button class="control-btn" onclick="resetStepper()">
           🔄 Reset
         </button>
-      </div>
-      
-      <div id="compile-status" style="margin-top:15px; padding:12px; background:var(--bg-secondary); border-radius:8px; display:none; box-shadow:var(--shadow);">
-        <span id="status-text">Ready to compile...</span>
+        
+        <div id="compile-status" class="inline-status">
+          <span id="status-text">Ready to compile...</span>
+        </div>
       </div>
     </div>
   </div>
@@ -890,6 +903,74 @@ window.capstoneModule = null;
 window.currentTheme = 'dark';
 window.testProgress = 0;
 window.totalTests = 0;
+window.saveCodeDebounceTimer = null;
+
+// C Code Persistence Functions
+function saveCode(code) {
+    try {
+        localStorage.setItem('ccode-autosave', code);
+        console.log('📝 Code auto-saved to localStorage');
+    } catch (e) {
+        console.warn('⚠️ Failed to save code to localStorage:', e);
+    }
+}
+
+function loadCode() {
+    try {
+        const savedCode = localStorage.getItem('ccode-autosave');
+        if (savedCode) {
+            console.log('📂 Loaded saved code from localStorage');
+            return savedCode;
+        }
+    } catch (e) {
+        console.warn('⚠️ Failed to load code from localStorage:', e);
+    }
+    return null;
+}
+
+function saveCodeDebounced(code) {
+    // Clear existing timer
+    if (window.saveCodeDebounceTimer) {
+        clearTimeout(window.saveCodeDebounceTimer);
+    }
+    
+    // Show saving indicator
+    const statusElement = document.getElementById('editor-status');
+    if (statusElement) {
+        statusElement.className = 'status-indicator status-warning';
+        statusElement.title = 'Saving...';
+    }
+    
+    // Set new timer for 2 seconds
+    window.saveCodeDebounceTimer = setTimeout(() => {
+        saveCode(code);
+        // Show saved indicator
+        if (statusElement) {
+            statusElement.className = 'status-indicator status-success';
+            statusElement.title = 'Auto-saved';
+        }
+    }, 2000);
+}
+
+function clearSavedCode() {
+    try {
+        localStorage.removeItem('ccode-autosave');
+        console.log('🗑️ Cleared saved code from localStorage');
+    } catch (e) {
+        console.warn('⚠️ Failed to clear saved code:', e);
+    }
+}
+
+function clearSavedCodeAndReload() {
+    if (confirm('Are you sure you want to clear your saved code and reload the default example?')) {
+        clearSavedCode();
+        // Reload the default example
+        if (cCodeEditor) {
+            cCodeEditor.setValue(examples.function);
+            showStatus('🗑️ Cleared saved code and loaded default example', 'info');
+        }
+    }
+}
 
 // Theme Management
 function toggleTheme() {
@@ -1907,6 +1988,8 @@ function loadExample(type) {
     if (examples[type] && cCodeEditor) {
         cCodeEditor.setValue(examples[type]);
         showStatus(`Loaded ${type} example`, 'success');
+        // Save the loaded example as the new current code
+        saveCode(examples[type]);
     }
 }
 
@@ -1916,6 +1999,8 @@ function loadTest(type) {
         document.getElementById('expected-value').value = tests[type].expected;
         document.getElementById('test-description').value = tests[type].description;
         showStatus(`Loaded ${type} test`, 'success');
+        // Save the loaded test as the new current code
+        saveCode(tests[type].code);
     }
 }
 
@@ -2301,11 +2386,11 @@ function debugInit() {
             // Mapping initialization now happens automatically in rawCodeLoader.disassembleAndLoad()
             // No need for delayed initialization here
             
-            showStatus('🐛 64-bit debug session started at MAIN function - assembly highlighting active!', 'success');
+            showStatus('🐛 debugging', 'success');
         } else {
             // Fallback to original method
             rawCodeLoader.loadHexBytes(compiledHex);
-            showStatus('🐛 64-bit debug session started - assembly highlighting active!', 'success');
+            showStatus('🐛 debugging', 'success');
         }
     } catch (error) {
         showStatus('❌ Debug initialization failed: ' + error.message, 'error');
@@ -2830,6 +2915,22 @@ document.addEventListener('DOMContentLoaded', async function() {
             indentUnit: 4,
             tabSize: 4,
             indentWithTabs: false
+        });
+        
+        // Load saved code if available
+        const savedCode = loadCode();
+        if (savedCode) {
+            cCodeEditor.setValue(savedCode);
+            showStatus('📂 Loaded saved code from previous session', 'info');
+        }
+        
+        // Add change event listener for auto-save
+        cCodeEditor.on('change', function(cm, change) {
+            // Only save if this is a user change (not programmatic)
+            if (change.origin !== 'setValue') {
+                const currentCode = cm.getValue();
+                saveCodeDebounced(currentCode);
+            }
         });
     }
     

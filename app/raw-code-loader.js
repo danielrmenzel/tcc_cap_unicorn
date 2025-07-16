@@ -368,9 +368,9 @@ var rawCodeLoader = {
         console.log('🎯 DEBUG: Analyzing C code for loop context...');
         console.log('🎯 DEBUG: C code snippet:', cCode.substring(0, 200));
         
-        // Check for array indexing patterns
-        var hasArrayIndexing = cCode.includes('[') && cCode.includes(']') && cCode.includes('arr[');
-        var hasForLoop = cCode.includes('for') && cCode.includes('i++');
+        // Check for array indexing patterns - detect any array access, not just 'arr['
+        var hasArrayIndexing = cCode.includes('[') && cCode.includes(']') && /\w+\[/.test(cCode);
+        var hasForLoop = cCode.includes('for') && (/i\+\+/.test(cCode) || /j\+\+/.test(cCode) || /k\+\+/.test(cCode));
         var hasSimpleMain = cCode.includes('int main()') && !cCode.includes('int add(') && !cCode.includes('int func');
         
         console.log('🎯 DEBUG: hasArrayIndexing =', hasArrayIndexing);
@@ -386,6 +386,18 @@ var rawCodeLoader = {
         // Additional check: any program with just main() and array indexing
         if (hasArrayIndexing && !cCode.includes('int ') && cCode.includes('main()')) {
             console.log('🎯 ✅ MAIN-ONLY PROGRAM WITH ARRAYS - will preserve call targets');
+            return true;
+        }
+        
+        // Check for nested loops with multi-dimensional arrays (like matrix multiplication)
+        var hasNestedLoops = (cCode.match(/for\s*\(/g) || []).length >= 2;
+        var hasMultiDimArrays = /\w+\[\d+\]\[\d+\]/.test(cCode) || /\w+\[.*\]\[.*\]/.test(cCode);
+        
+        console.log('🎯 DEBUG: hasNestedLoops =', hasNestedLoops);
+        console.log('🎯 DEBUG: hasMultiDimArrays =', hasMultiDimArrays);
+        
+        if (hasArrayIndexing && hasNestedLoops && hasMultiDimArrays && hasSimpleMain) {
+            console.log('🎯 ✅ NESTED LOOPS WITH MULTI-DIMENSIONAL ARRAYS DETECTED - will preserve call targets');
             return true;
         }
         
