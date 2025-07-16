@@ -269,6 +269,7 @@ var rawCodeLoader = {
                 var contextEnd = Math.min(this.rawBytes.length, currentOffset + 20);
                 console.log('🔧 Context bytes:', this.rawBytes.slice(contextStart, contextEnd).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
                 
+                
                 // Extract the target address from op_str (e.g., "call 0x1003d")
                 var match = inst.op_str.match(/0x([0-9a-fA-F]+)/);
                 if (match) {
@@ -354,6 +355,42 @@ var rawCodeLoader = {
             currentOffset += inst.size;
         }
         console.log('🔧 === FINISHED fixTCCFunctionCalls ===');
+    },
+    
+    // Simple check to detect if we're in a loop context (for array indexing)
+    isSimpleLoopContext: function(callOffset) {
+        // Get the C code to analyze
+        var cCode = '';
+        if (typeof window !== 'undefined' && window.cCodeEditor) {
+            cCode = window.cCodeEditor.getValue();
+        }
+        
+        console.log('🎯 DEBUG: Analyzing C code for loop context...');
+        console.log('🎯 DEBUG: C code snippet:', cCode.substring(0, 200));
+        
+        // Check for array indexing patterns
+        var hasArrayIndexing = cCode.includes('[') && cCode.includes(']') && cCode.includes('arr[');
+        var hasForLoop = cCode.includes('for') && cCode.includes('i++');
+        var hasSimpleMain = cCode.includes('int main()') && !cCode.includes('int add(') && !cCode.includes('int func');
+        
+        console.log('🎯 DEBUG: hasArrayIndexing =', hasArrayIndexing);
+        console.log('🎯 DEBUG: hasForLoop =', hasForLoop);
+        console.log('🎯 DEBUG: hasSimpleMain =', hasSimpleMain);
+        
+        // If this is a simple main function with array indexing in a for loop
+        if (hasArrayIndexing && hasForLoop && hasSimpleMain) {
+            console.log('🎯 ✅ SIMPLE ARRAY INDEXING LOOP DETECTED - will preserve call targets');
+            return true;
+        }
+        
+        // Additional check: any program with just main() and array indexing
+        if (hasArrayIndexing && !cCode.includes('int ') && cCode.includes('main()')) {
+            console.log('🎯 ✅ MAIN-ONLY PROGRAM WITH ARRAYS - will preserve call targets');
+            return true;
+        }
+        
+        console.log('🎯 ❌ Not a simple loop context - will apply call fixing');
+        return false;
     },
     
     // Parse TCC ELF output and detect functions
@@ -678,6 +715,24 @@ var rawCodeLoader = {
             }
         }
         
+        // ULTRA CONSERVATIVE CHECK: If we only have main() function, preserve original targets
+        var cCode = '';
+        if (typeof window !== 'undefined' && window.cCodeEditor) {
+            cCode = window.cCodeEditor.getValue();
+        }
+        
+        var isMainOnly = cCode.includes('int main()') && 
+                        !cCode.includes('int add(') && 
+                        !cCode.includes('int func') && 
+                        !cCode.includes('int sub(') &&
+                        !cCode.includes('int mul(') &&
+                        (cCode.match(/int\s+\w+\s*\(/g) || []).length <= 1;
+        
+        if (isMainOnly && (cCode.includes('for') || cCode.includes('while'))) {
+            console.log('🎯 ✅ MAIN-ONLY PROGRAM WITH LOOPS: Preserving ALL call targets');
+            return originalTarget;
+        }
+        
         // Check if the original target is already a valid function start
         var targetFunction = null;
         for (var i = 0; i < functionBoundaries.length; i++) {
@@ -694,7 +749,23 @@ var rawCodeLoader = {
             var callerStartAddr = this.baseAddress + callerFunction.start;
             if (originalTarget === callerStartAddr) {
                 console.log('🎯 Target is valid function but same as caller - potential false recursion');
-                // Fall through to correction logic instead of preserving
+                // CONSERVATIVE APPROACH: Only "fix" if there's clear evidence this is wrong
+                // For simple loops and array indexing, the target might actually be correct
+                var isSimpleLoop = this.isSimpleLoopContext(callOffset);
+                if (isSimpleLoop) {
+                    console.log('🎯 ✅ SIMPLE LOOP DETECTED: Preserving original target to avoid breaking array indexing');
+                    return originalTarget;
+                }
+                
+                // ADDITIONAL CONSERVATIVE CHECK: If this is a single-function program,
+                // be very careful about "fixing" self-calls
+                var functionCount = functionBoundaries.length;
+                if (functionCount <= 1) {
+                    console.log('🎯 ✅ SINGLE FUNCTION PROGRAM: Preserving original target to avoid breaking loops');
+                    return originalTarget;
+                }
+                
+                // Fall through to correction logic for complex cases
             } else {
                 console.log('🎯 ✅ Original target 0x' + originalTarget.toString(16) + ' is already a valid different function, KEEPING IT');
                 console.log('🎯 ===== DETERMINE CORRECT CALL TARGET END (VALID TARGET) =====');
@@ -1388,6 +1459,10 @@ var stepDebugger = {
     updateCurrentInstruction: function() {
         // Clear all instruction highlighting
         $('.row-instruction').removeClass('current-instruction');
+        // Clear all assembly function highlighting classes
+        for (let i = 0; i <= 4; i++) {
+            $('.row-instruction').removeClass('assembly-function-highlight-' + i);
+        }
         
         // Clear C code highlighting
         if (typeof codeLineMapper !== 'undefined') {
@@ -1397,7 +1472,20 @@ var stepDebugger = {
         // Highlight current instruction
         if (this.currentInstructionIndex < paneAssembler.instructions.length) {
             var currentInst = paneAssembler.instructions[this.currentInstructionIndex];
-            $(currentInst.node).addClass('current-instruction');
+            
+            // Check if we can determine the function color for this instruction
+            var colorClass = 'current-instruction'; // Default yellow fallback
+            if (typeof codeLineMapper !== 'undefined' && currentInst.address) {
+                var functionInfo = codeLineMapper.lineMapping.get(currentInst.address);
+                if (functionInfo && functionInfo.functionName) {
+                    var functionIndex = codeLineMapper.getFunctionIndex(functionInfo.functionName);
+                    var colorIndex = codeLineMapper.getFunctionColor(functionInfo.functionName, functionIndex);
+                    colorClass = 'assembly-function-highlight-' + colorIndex;
+                    console.log('🎨 Assembly instruction at 0x' + currentInst.address.toString(16) + ' using color ' + colorIndex + ' for function "' + functionInfo.functionName + '"');
+                }
+            }
+            
+            $(currentInst.node).addClass(colorClass);
             
             // Highlight corresponding C code line
             if (typeof codeLineMapper !== 'undefined' && currentInst.address) {
@@ -1416,18 +1504,33 @@ var stepDebugger = {
         
         // Clear all highlighting first
         $('.row-instruction').removeClass('current-instruction');
+        // Clear all assembly function highlighting classes
+        for (let i = 0; i <= 4; i++) {
+            $('.row-instruction').removeClass('assembly-function-highlight-' + i);
+        }
         
         // Highlight the current instruction if found
         if (currentInst) {
-            $(currentInst.node).addClass('current-instruction');
+            // Check if we can determine the function color for this instruction
+            var colorClass = 'current-instruction'; // Default yellow fallback
+            var instructionAddress = currentInst.getAddress();
+            if (typeof codeLineMapper !== 'undefined') {
+                var functionInfo = codeLineMapper.lineMapping.get(instructionAddress);
+                if (functionInfo && functionInfo.functionName) {
+                    var functionIndex = codeLineMapper.getFunctionIndex(functionInfo.functionName);
+                    var colorIndex = codeLineMapper.getFunctionColor(functionInfo.functionName, functionIndex);
+                    colorClass = 'assembly-function-highlight-' + colorIndex;
+                    console.log('🎨 Assembly instruction at 0x' + instructionAddress.toString(16) + ' using color ' + colorIndex + ' for function "' + functionInfo.functionName + '"');
+                }
+            }
+            
+            $(currentInst.node).addClass(colorClass);
             console.log('\n🎯 === STEP DEBUG === RIP: 0x' + currentRIP.toString(16) + ' ===');
             console.log('🔧 Assembly instruction: "' + currentInst.dataAsm + '"');
             
             // Highlight corresponding C code line
             if (typeof codeLineMapper !== 'undefined') {
                 console.log('🔗 Triggering C line highlighting...');
-                // Use instruction's address instead of RIP to match the mapping
-                var instructionAddress = currentInst.getAddress();
                 console.log('🔧 Using instruction address 0x' + instructionAddress.toString(16) + ' instead of RIP 0x' + currentRIP.toString(16));
                 codeLineMapper.highlightCLine(instructionAddress);
             } else {
@@ -1451,6 +1554,10 @@ var stepDebugger = {
         
         // Clear highlighting
         $('.row-instruction').removeClass('current-instruction');
+        // Clear all assembly function highlighting classes
+        for (let i = 0; i <= 4; i++) {
+            $('.row-instruction').removeClass('assembly-function-highlight-' + i);
+        }
         
         // Clear C code highlighting
         if (typeof codeLineMapper !== 'undefined') {

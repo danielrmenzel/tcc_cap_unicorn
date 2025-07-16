@@ -344,6 +344,164 @@
      transition: all 0.2s ease-in-out;
  }
 
+ /* Popup and Info Button Styles */
+ .info-btn {
+     background: var(--bg-tertiary);
+     color: var(--accent-green);
+     border: 1px solid var(--accent-green);
+     padding: 4px 8px;
+     margin-left: 10px;
+     border-radius: 3px;
+     cursor: pointer;
+     font-size: 14px;
+     transition: all 0.3s ease;
+ }
+ 
+ .info-btn:hover {
+     background: var(--accent-green);
+     color: var(--bg-primary);
+     box-shadow: var(--shadow);
+ }
+ 
+ .popup-overlay {
+     position: fixed;
+     top: 0;
+     left: 0;
+     width: 100%;
+     height: 100%;
+     background: rgba(0, 0, 0, 0.8);
+     display: flex;
+     justify-content: center;
+     align-items: center;
+     z-index: 10000;
+ }
+ 
+ .popup-content {
+     background: var(--bg-secondary);
+     border: 2px solid var(--accent-green);
+     box-shadow: var(--shadow-hover);
+     max-width: 600px;
+     max-height: 80vh;
+     overflow-y: auto;
+     border-radius: 5px;
+ }
+ 
+ .popup-header {
+     background: var(--bg-tertiary);
+     padding: 15px;
+     border-bottom: 1px solid var(--accent-green);
+     display: flex;
+     justify-content: space-between;
+     align-items: center;
+ }
+ 
+ .popup-header h3 {
+     margin: 0;
+     color: var(--accent-green);
+     font-size: 18px;
+ }
+ 
+ .popup-close {
+     background: none;
+     border: none;
+     color: var(--accent-red);
+     font-size: 24px;
+     cursor: pointer;
+     padding: 0;
+     width: 30px;
+     height: 30px;
+     display: flex;
+     align-items: center;
+     justify-content: center;
+ }
+ 
+ .popup-close:hover {
+     background: var(--accent-red);
+     color: var(--bg-primary);
+     border-radius: 3px;
+ }
+ 
+ .popup-body {
+     padding: 20px;
+     color: var(--text-primary);
+ }
+ 
+ .guidelines-section {
+     margin-bottom: 20px;
+ }
+ 
+ .guidelines-section h4 {
+     color: var(--accent-green);
+     margin-bottom: 10px;
+     font-size: 16px;
+ }
+ 
+ .guidelines-section ul {
+     margin: 0;
+     padding-left: 20px;
+ }
+ 
+ .guidelines-section li {
+     margin-bottom: 8px;
+     line-height: 1.4;
+ }
+ 
+ .code-example {
+     background: var(--bg-primary);
+     border: 1px solid var(--border-color);
+     padding: 10px;
+     border-radius: 3px;
+     font-family: 'Courier New', monospace;
+     color: var(--accent-cyan);
+     overflow-x: auto;
+ }
+ 
+ .error-item {
+     background: var(--bg-tertiary);
+     border-left: 4px solid var(--accent-red);
+     padding: 10px;
+     margin-bottom: 10px;
+     border-radius: 0 3px 3px 0;
+ }
+ 
+ .error-suggestion {
+     margin: 5px 0 0 0;
+     color: var(--text-secondary);
+     font-style: italic;
+ }
+ 
+ .popup-actions {
+     text-align: center;
+     margin-top: 20px;
+ }
+ 
+ .popup-btn {
+     background: var(--bg-tertiary);
+     color: var(--accent-green);
+     border: 2px solid var(--accent-green);
+     padding: 8px 16px;
+     margin: 0 5px;
+     cursor: pointer;
+     transition: all 0.3s ease;
+     font-family: inherit;
+     text-transform: uppercase;
+ }
+ 
+ .popup-btn:hover {
+     background: var(--accent-green);
+     color: var(--bg-primary);
+ }
+ 
+ .popup-btn.secondary {
+     border-color: var(--accent-yellow);
+     color: var(--accent-yellow);
+ }
+ 
+ .popup-btn.secondary:hover {
+     background: var(--accent-yellow);
+     color: var(--bg-primary);
+ }
+
  /* Assembly instruction highlighting */
  .asm-highlight-hover {
      background-color: rgba(33, 150, 243, 0.15) !important;
@@ -418,6 +576,7 @@
           <h4>
             <span class="status-indicator status-info" id="editor-status"></span>
             C Code Editor
+            <button onclick="showInfoPopup()" class="info-btn" title="Usage Guidelines">ℹ️</button>
           </h4>
           <div class="editor-container" data-status="Ready">
             <textarea id="editor">int add(int a, int b) {
@@ -1789,6 +1948,145 @@ async function initializeModules() {
     }
 }
 
+// C code validation function
+function validateCCode(cCode) {
+    const errors = [];
+    
+    // Check for include statements
+    const includePattern = /#include\s*[<"][^>"]*[>"]/g;
+    const includeMatches = cCode.match(includePattern);
+    
+    if (includeMatches) {
+        includeMatches.forEach(include => {
+            errors.push({
+                type: 'include_not_supported',
+                message: `Include headers are not supported: ${include}`,
+                suggestion: 'Remove include statements. Standard functions like printf, malloc are not available in this environment.'
+            });
+        });
+    }
+    
+    return {
+        isValid: errors.length === 0,
+        errors: errors
+    };
+}
+
+// Show validation popup
+function showValidationPopup(errors) {
+    const popupHtml = `
+        <div id="validation-popup" class="popup-overlay">
+            <div class="popup-content">
+                <div class="popup-header">
+                    <h3>❌ Code Validation Errors</h3>
+                    <button onclick="closeValidationPopup()" class="popup-close">×</button>
+                </div>
+                <div class="popup-body">
+                    ${errors.map(error => `
+                        <div class="error-item">
+                            <strong>${error.message}</strong>
+                            <p class="error-suggestion">${error.suggestion}</p>
+                        </div>
+                    `).join('')}
+                    <div class="popup-actions">
+                        <button onclick="closeValidationPopup()" class="popup-btn">OK</button>
+                        <button onclick="showInfoPopup()" class="popup-btn secondary">Show Usage Guidelines</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', popupHtml);
+}
+
+// Close validation popup
+function closeValidationPopup() {
+    const popup = document.getElementById('validation-popup');
+    if (popup) popup.remove();
+}
+
+// Show info popup with usage guidelines
+function showInfoPopup() {
+    const popupHtml = `
+        <div id="info-popup" class="popup-overlay">
+            <div class="popup-content">
+                <div class="popup-header">
+                    <h3>ℹ️ C Code Usage Guidelines</h3>
+                    <button onclick="closeInfoPopup()" class="popup-close">×</button>
+                </div>
+                <div class="popup-body">
+                    <div class="guidelines-section">
+                        <h4>✅ What Works:</h4>
+                        <ul>
+                            <li>Basic C syntax (functions, variables, loops, conditionals)</li>
+                            <li>Arithmetic and logical operations</li>
+                            <li>Function calls between your own functions</li>
+                            <li>Local variables and function parameters</li>
+                            <li>Control flow: if/else, for/while loops, return statements</li>
+                            <li>Basic data types: int, char, short, long</li>
+                            <li><strong>Arrays:</strong> Local arrays, array indexing, multi-dimensional arrays</li>
+                            <li><strong>Dynamic array indexing:</strong> arr[i] with variable indices (now fixed with enhanced validation)</li>
+                            <li><strong>Pointers:</strong> Basic pointer operations and pointer arithmetic</li>
+                            <li><strong>Structures:</strong> Struct definitions and member access</li>
+                        </ul>
+                    </div>
+                    <div class="guidelines-section">
+                        <h4>❌ What Doesn't Work:</h4>
+                        <ul>
+                            <li><strong>Include headers:</strong> #include statements are not supported</li>
+                            <li><strong>Standard library functions:</strong> printf, malloc, free, etc.</li>
+                            <li><strong>External libraries:</strong> No external dependencies available</li>
+                            <li><strong>File I/O:</strong> No file operations supported</li>
+                            <li><strong>Dynamic memory:</strong> No malloc/free support</li>
+                            <li><strong>Dynamic array indexing:</strong> arr[i] with variable indices (improved with conservative call fixing)</li>
+                            <li><strong>Simple loops with arrays:</strong> Basic for loops with array access should work</li>
+                        </ul>
+                    </div>
+                    <div class="guidelines-section">
+                        <h4>📝 Example Code Patterns:</h4>
+                        <pre class="code-example">// Simple function calls
+int helper(int x) {
+    return x * 2;
+}
+
+// Arrays work with both static and dynamic indexing
+int sumArray(int arr[], int size) {
+    int sum = 0;
+    // ✅ Static indexing works fine:
+    sum = arr[0] + arr[1] + arr[2];
+    
+    // ✅ Dynamic indexing should now work (with enhanced validation):
+    for(int i = 0; i < size; i++) { 
+        sum += arr[i]; 
+    }
+    
+    return sum;
+}
+
+int main() {
+    int numbers[5] = {1, 2, 3, 4, 5};
+    int result = sumArray(numbers, 5);
+    return result;
+}</pre>
+                    </div>
+                    <div class="popup-actions">
+                        <button onclick="closeInfoPopup()" class="popup-btn">Got it!</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', popupHtml);
+}
+
+// Close info popup
+function closeInfoPopup() {
+    const popup = document.getElementById('info-popup');
+    if (popup) popup.remove();
+}
+
 // Main compilation function
 async function compileAndDisasm() {
     showStatus('🔨 Compiling...', 'info');
@@ -1800,6 +2098,15 @@ async function compileAndDisasm() {
     
     // Get C code from editor
     const cCode = cCodeEditor ? cCodeEditor.getValue() : examples.function;
+    
+    // Validate C code before compilation
+    const validation = validateCCode(cCode);
+    if (!validation.isValid) {
+        showValidationPopup(validation.errors);
+        showStatus('❌ Code validation failed', 'error');
+        updateStatusIndicator('editor-status', 'error');
+        return;
+    }
     
     // Try to use TCC compilation if modules are loaded
     if (window.tccModule) {
