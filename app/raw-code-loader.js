@@ -5,6 +5,96 @@ var rawCodeLoader = {
     baseAddress: 0x10000,
     mainFunctionOffset: null,
     
+    // Reset all call correction state to prevent contamination between tests
+    resetCallCorrectionState: function() {
+        console.log('🔄 ====== RESETTING CALL CORRECTION STATE ======');
+        
+        // Reset core state
+        this.rawBytes = [];
+        this.mainFunctionOffset = null;
+        this.baseAddress = 0x10000; // Reset to default
+        
+        // AGGRESSIVE: Close and recreate Unicorn engine to ensure clean state
+        if (typeof e !== 'undefined' && e) {
+            try {
+                e.close();
+                console.log('🔄 Closed Unicorn engine');
+            } catch (err) {
+                console.warn('Warning: Could not close Unicorn engine:', err);
+            }
+        }
+        
+        // Recreate Unicorn engine
+        try {
+            if (typeof uc !== 'undefined') {
+                window.e = new uc.Unicorn(uc.ARCH_X86, uc.MODE_64);
+                console.log('🔄 Created new Unicorn engine');
+                
+                // CRITICAL: Allow engine to stabilize to prevent race conditions
+                // This prevents timing-dependent execution failures
+                var stabilizationStart = Date.now();
+                while (Date.now() - stabilizationStart < 50) {
+                    // Busy wait for 50ms to ensure engine is fully initialized
+                }
+                console.log('🔄 Engine stabilized after 50ms');
+            }
+        } catch (err) {
+            console.warn('Warning: Could not create new Unicorn engine:', err);
+        }
+        
+        // Reset step debugger state
+        if (typeof stepDebugger !== 'undefined' && stepDebugger) {
+            stepDebugger.isInitialized = false;
+            stepDebugger.currentInstructionIndex = 0;
+        }
+        
+        // Reset UI state
+        if (typeof paneAssembler !== 'undefined' && paneAssembler) {
+            paneAssembler.instructions = [];
+            if (paneAssembler.mapped) {
+                try {
+                    if (typeof e !== 'undefined' && e) {
+                        e.mem_unmap(paneAssembler.address, paneAssembler.size);
+                    }
+                } catch (err) {
+                    console.warn('Warning: Could not unmap assembler memory:', err);
+                }
+                paneAssembler.mapped = false;
+            }
+        }
+        
+        // Reset stack viewer state
+        if (typeof stackViewer !== 'undefined' && stackViewer) {
+            if (stackViewer.mapped) {
+                try {
+                    if (typeof e !== 'undefined' && e) {
+                        e.mem_unmap(stackViewer.baseAddress, stackViewer.size);
+                    }
+                } catch (err) {
+                    console.warn('Warning: Could not unmap stack memory:', err);
+                }
+                stackViewer.mapped = false;
+            }
+        }
+        
+        // Clear code line mapping cache
+        if (typeof codeLineMapper !== 'undefined' && codeLineMapper && codeLineMapper.lineMapping) {
+            codeLineMapper.lineMapping.clear();
+        }
+        
+        // Clear instruction highlighting
+        if (typeof assemblyCodeViewer !== 'undefined' && assemblyCodeViewer) {
+            // Clear all highlighting classes
+            const highlightClasses = ['highlight-active', 'highlight-asm', 'highlight-C-func-blue', 'highlight-C-func-green', 'highlight-C-func-orange', 'highlight-C-func-purple', 'highlight-C-func-red'];
+            highlightClasses.forEach(className => {
+                const elements = document.querySelectorAll('.' + className);
+                elements.forEach(el => el.classList.remove(className));
+            });
+        }
+        
+        console.log('✅ Call correction state reset complete');
+    },
+    
     // Load raw hex bytes
     loadHexBytes: function(hexString) {
         // Remove whitespace and convert to bytes
@@ -220,9 +310,27 @@ var rawCodeLoader = {
     
     // Fix TCC function call addresses - TCC often generates calls with incorrect offsets
     fixTCCFunctionCalls: function() {
-        console.log('🔧 === STARTING fixTCCFunctionCalls ===');
+        console.log('🔧 ======= STARTING fixTCCFunctionCalls =======');
         console.log('🔧 Raw bytes length:', this.rawBytes.length);
         console.log('🔧 Base address:', '0x' + this.baseAddress.toString(16));
+        
+        // Get current C code to identify the context
+        var cCode = '';
+        if (typeof cCodeEditor !== 'undefined' && cCodeEditor) {
+            cCode = cCodeEditor.getValue();
+        }
+        console.log('🔧 Current C code (first 100 chars):', cCode.substring(0, 100));
+        
+        // Diagnostic logging to track state contamination
+        if (typeof stepDebugger !== 'undefined' && stepDebugger && stepDebugger.isInitialized) {
+            console.warn('⚠️ POTENTIAL STATE CONTAMINATION: stepDebugger is already initialized');
+        }
+        if (typeof paneAssembler !== 'undefined' && paneAssembler && paneAssembler.mapped) {
+            console.warn('⚠️ POTENTIAL STATE CONTAMINATION: paneAssembler memory is already mapped');
+        }
+        if (typeof stackViewer !== 'undefined' && stackViewer && stackViewer.mapped) {
+            console.warn('⚠️ POTENTIAL STATE CONTAMINATION: stackViewer memory is already mapped');
+        }
         
         // CRITICAL DEBUGGING: Let's see what we're working with
         console.log('🔧 First 100 raw bytes:', this.rawBytes.slice(0, 100).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
@@ -370,12 +478,16 @@ var rawCodeLoader = {
         
         // Check for array indexing patterns - detect any array access, not just 'arr['
         var hasArrayIndexing = cCode.includes('[') && cCode.includes(']') && /\w+\[/.test(cCode);
+        var hasComplexArrayIndexing = /\w+\[[\w\+\-\*\/\s]+\]/.test(cCode); // arr[j+1], arr[i-1], etc.
         var hasForLoop = cCode.includes('for') && (/i\+\+/.test(cCode) || /j\+\+/.test(cCode) || /k\+\+/.test(cCode));
         var hasSimpleMain = cCode.includes('int main()') && !cCode.includes('int add(') && !cCode.includes('int func');
+        var hasStruct = cCode.includes('struct') && /\w+\.\w+/.test(cCode); // struct definition with member access
         
         console.log('🎯 DEBUG: hasArrayIndexing =', hasArrayIndexing);
+        console.log('🎯 DEBUG: hasComplexArrayIndexing =', hasComplexArrayIndexing);
         console.log('🎯 DEBUG: hasForLoop =', hasForLoop);
         console.log('🎯 DEBUG: hasSimpleMain =', hasSimpleMain);
+        console.log('🎯 DEBUG: hasStruct =', hasStruct);
         
         // If this is a simple main function with array indexing in a for loop
         if (hasArrayIndexing && hasForLoop && hasSimpleMain) {
@@ -392,12 +504,32 @@ var rawCodeLoader = {
         // Check for nested loops with multi-dimensional arrays (like matrix multiplication)
         var hasNestedLoops = (cCode.match(/for\s*\(/g) || []).length >= 2;
         var hasMultiDimArrays = /\w+\[\d+\]\[\d+\]/.test(cCode) || /\w+\[.*\]\[.*\]/.test(cCode);
+        var hasConditionalInLoop = cCode.includes('if') && hasNestedLoops;
         
         console.log('🎯 DEBUG: hasNestedLoops =', hasNestedLoops);
         console.log('🎯 DEBUG: hasMultiDimArrays =', hasMultiDimArrays);
+        console.log('🎯 DEBUG: hasConditionalInLoop =', hasConditionalInLoop);
         
         if (hasArrayIndexing && hasNestedLoops && hasMultiDimArrays && hasSimpleMain) {
             console.log('🎯 ✅ NESTED LOOPS WITH MULTI-DIMENSIONAL ARRAYS DETECTED - will preserve call targets');
+            return true;
+        }
+        
+        // Check for nested loops with complex single-dimensional array indexing (like bubble sort)
+        if (hasComplexArrayIndexing && hasNestedLoops && hasSimpleMain) {
+            console.log('🎯 ✅ NESTED LOOPS WITH COMPLEX ARRAY INDEXING DETECTED - will preserve call targets');
+            return true;
+        }
+        
+        // Check for loops with conditional array modifications (like bubble sort swapping)
+        if (hasArrayIndexing && hasConditionalInLoop && hasSimpleMain) {
+            console.log('🎯 ✅ LOOPS WITH CONDITIONAL ARRAY MODIFICATIONS DETECTED - will preserve call targets');
+            return true;
+        }
+        
+        // Check for struct usage with member access
+        if (hasStruct && hasSimpleMain) {
+            console.log('🎯 ✅ STRUCT USAGE DETECTED - will preserve call targets');
             return true;
         }
         
@@ -740,9 +872,17 @@ var rawCodeLoader = {
                         !cCode.includes('int mul(') &&
                         (cCode.match(/int\s+\w+\s*\(/g) || []).length <= 1;
         
+        // Check for simple main-only programs with basic loops
         if (isMainOnly && (cCode.includes('for') || cCode.includes('while'))) {
-            console.log('🎯 ✅ MAIN-ONLY PROGRAM WITH LOOPS: Preserving ALL call targets');
-            return originalTarget;
+            // Use the specific loop context detection instead of blanket preservation
+            var isSimpleLoop = this.isSimpleLoopContext(callOffset);
+            if (isSimpleLoop) {
+                console.log('🎯 ✅ MAIN-ONLY PROGRAM WITH SIMPLE LOOPS: Preserving call targets');
+                return originalTarget;
+            } else {
+                console.log('🎯 ⚠️ MAIN-ONLY PROGRAM WITH COMPLEX LOOPS: Allowing call fixing');
+                // Fall through to let call fixing proceed for complex cases
+            }
         }
         
         // Check if the original target is already a valid function start

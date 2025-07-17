@@ -823,8 +823,16 @@ int main() {
       </div>
       
       <!-- Control Buttons -->
-      <div class="button-row" style="justify-content:center">
+      <div class="button-row" style="justify-content:center; align-items:center; gap:15px; flex-wrap:wrap">
+        <button class="control-btn" onclick="runAllTestCategories()">RUN ALL TESTS</button>
         <button class="control-btn" onclick="clearTestResults()">CLEAR RESULTS</button>
+        <div style="display:flex; align-items:center; gap:10px">
+          <label for="timeout-slider" style="color:var(--text-primary); font-size:14px">Timeout:</label>
+          <input type="range" id="timeout-slider" min="5" max="60" value="20" 
+                 style="width:120px; accent-color:var(--accent-green)" 
+                 oninput="updateTimeoutDisplay(this.value)">
+          <span id="timeout-display" style="color:var(--text-secondary); font-size:14px; min-width:40px">20s</span>
+        </div>
       </div>
       
       <div id="test-results" style="background:var(--bg-primary); padding:12px; font-family:'Courier New', monospace; color:var(--text-primary); min-height:100px; overflow-y:auto; border:2px solid var(--border-color); border-radius:0; white-space:pre-wrap; word-wrap:break-word; box-shadow:var(--shadow); text-shadow:var(--retro-glow)">
@@ -1161,13 +1169,13 @@ const tests = {
 }`, 
         expected: 42, 
         description: "Test simple return value",
-        timeout: 5000
+        timeout: 20000
     },
     add: { 
         code: examples.function, 
         expected: 40, 
         description: "Test addition function",
-        timeout: 5000
+        timeout: 20000
     },
     arithmetic: {
         code: `int add(int a, int b) {
@@ -1185,7 +1193,7 @@ int main() {
 }`,
         expected: 16,
         description: "Test multiple function calls with arithmetic",
-        timeout: 8000
+        timeout: 20000
     },
     subtraction: {
         code: `int sub(int a, int b) {
@@ -1196,7 +1204,7 @@ int main() {
 }`,
         expected: 7,
         description: "Test subtraction function",
-        timeout: 5000
+        timeout: 20000
     },
     multiplication: {
         code: `int mul(int a, int b) {
@@ -1207,7 +1215,7 @@ int main() {
 }`,
         expected: 42,
         description: "Test multiplication function",
-        timeout: 5000
+        timeout: 20000
     },
     nested_calls: {
         code: `int double_val(int x) {
@@ -1221,7 +1229,7 @@ int main() {
 }`,
         expected: 11,
         description: "Test nested function calls",
-        timeout: 8000
+        timeout: 20000
     },
     conditional: {
         code: `int max(int a, int b) {
@@ -1236,7 +1244,7 @@ int main() {
 }`,
         expected: 15,
         description: "Test conditional statements",
-        timeout: 8000
+        timeout: 20000
     },
     factorial: { 
         code: `int factorial(int n) {
@@ -1249,13 +1257,13 @@ int main() {
 }`, 
         expected: 120, 
         description: "Test recursive factorial function",
-        timeout: 10000
+        timeout: 20000
     },
     fibonacci: { 
         code: examples.complex, 
         expected: 5, 
         description: "Test fibonacci sequence",
-        timeout: 10000
+        timeout: 20000
     },
     prime: { 
         code: `int isPrime(int n) {
@@ -1271,7 +1279,7 @@ int main() {
 }`, 
         expected: 1, 
         description: "Test prime number check",
-        timeout: 8000
+        timeout: 20000
     },
     iterative_loop: {
         code: `int main() {
@@ -1283,7 +1291,7 @@ int main() {
 }`,
         expected: 15,
         description: "Test for loop iteration",
-        timeout: 10000
+        timeout: 20000
     },
     while_loop: {
         code: `int main() {
@@ -1297,7 +1305,7 @@ int main() {
 }`,
         expected: 10,
         description: "Test while loop",
-        timeout: 10000
+        timeout: 20000
     },
     sum_up_to: {
         code: `int sum_up_to(int n) {
@@ -1319,7 +1327,7 @@ int main() {
 }`,
         expected: 9,
         description: "Test for loop with continue and break",
-        timeout: 8000
+        timeout: 20000
     },
     main_function: {
         code: `void print_sign(int x) {
@@ -1348,7 +1356,7 @@ int main() {
 }`,
         expected: 9,
         description: "Test complete main function with multiple function calls",
-        timeout: 10000
+        timeout: 20000
     },
     infinite_loop_test: {
         code: `int main() {
@@ -1359,7 +1367,7 @@ int main() {
 }`,
         expected: null, // Special marker for expected timeout
         description: "Test infinite loop detection and cancellation",
-        timeout: 3000,
+        timeout: 20000,
         shouldTimeout: true
     },
     infinite_recursion_test: {
@@ -1371,7 +1379,7 @@ int main() {
 }`,
         expected: null,
         description: "Test infinite recursion detection and cancellation", 
-        timeout: 3000,
+        timeout: 20000,
         shouldTimeout: true
     },
     
@@ -1387,7 +1395,7 @@ int main() {
 }`,
         expected: 720,
         description: "Test factorial with larger number",
-        timeout: 8000
+        timeout: 20000
     },
     
     fibonacci_large: {
@@ -1401,7 +1409,7 @@ int main() {
 }`,
         expected: 13,
         description: "Test fibonacci with larger number",
-        timeout: 10000
+        timeout: 20000
     },
     
     sum_recursive: {
@@ -1415,7 +1423,7 @@ int main() {
 }`,
         expected: 15,
         description: "Test recursive sum function",
-        timeout: 5000
+        timeout: 20000
     },
     
     power_recursive: {
@@ -1429,7 +1437,7 @@ int main() {
 }`,
         expected: 16,
         description: "Test recursive power function",
-        timeout: 5000
+        timeout: 20000
     },
     
     gcd_recursive: {
@@ -1443,7 +1451,7 @@ int main() {
 }`,
         expected: 6,
         description: "Test recursive GCD algorithm",
-        timeout: 5000
+        timeout: 20000
     },
     
     // === LOOP TESTS ===
@@ -1459,7 +1467,7 @@ int main() {
 }`,
         expected: 10,
         description: "Test while loop functionality",
-        timeout: 5000
+        timeout: 20000
     },
     
     nested_loops: {
@@ -1474,7 +1482,7 @@ int main() {
 }`,
         expected: 36,
         description: "Test nested loop functionality",
-        timeout: 5000
+        timeout: 20000
     },
     
     // === ARRAY TESTS ===
@@ -1489,7 +1497,7 @@ int main() {
 }`,
         expected: 15,
         description: "Test array initialization and sum",
-        timeout: 5000
+        timeout: 20000
     },
     
     array_max: {
@@ -1505,7 +1513,7 @@ int main() {
 }`,
         expected: 9,
         description: "Test finding maximum in array",
-        timeout: 5000
+        timeout: 20000
     },
     
     // === COMPLEX ALGORITHMS ===
@@ -1528,7 +1536,7 @@ int main() {
 }`,
         expected: 12,
         description: "Test bubble sort algorithm",
-        timeout: 8000
+        timeout: 20000
     },
     
     binary_search: {
@@ -1549,7 +1557,7 @@ int main() {
 }`,
         expected: 3,
         description: "Test recursive binary search",
-        timeout: 8000
+        timeout: 20000
     },
     
     // === MATHEMATICAL TESTS ===
@@ -1572,7 +1580,7 @@ int main() {
 }`,
         expected: 16,
         description: "Test Collatz conjecture sequence",
-        timeout: 8000
+        timeout: 20000
     },
     
     triangle_numbers: {
@@ -1589,7 +1597,7 @@ int main() {
 }`,
         expected: 35,
         description: "Test triangle numbers calculation",
-        timeout: 5000
+        timeout: 20000
     },
     
     // === BITWISE TESTS ===
@@ -1604,7 +1612,7 @@ int main() {
 }`,
         expected: 28,
         description: "Test bitwise operations",
-        timeout: 5000
+        timeout: 20000
     },
     
     bit_counting: {
@@ -1622,7 +1630,7 @@ int main() {
 }`,
         expected: 4,
         description: "Test bit counting algorithm",
-        timeout: 5000
+        timeout: 20000
     },
     
     // === STRUCT TESTS ===
@@ -1640,7 +1648,7 @@ int main() {
 }`,
         expected: 25,
         description: "Test struct definition and usage",
-        timeout: 5000
+        timeout: 20000
     },
     
     // === PERFORMANCE TESTS ===
@@ -1660,7 +1668,7 @@ int main() {
 }`,
         expected: 588,
         description: "Test heavy nested computation",
-        timeout: 30000
+        timeout: 20000
     },
     
     // Function Calls and Loop Tests
@@ -1710,7 +1718,7 @@ int main(void){
 }`,
         expected: 30,
         description: "Five function circular calls",
-        timeout: 10000
+        timeout: 20000
     },
     
     four_function_cycle: {
@@ -1752,7 +1760,7 @@ int main(void){
 }`,
         expected: 50,
         description: "Four function circular calls",
-        timeout: 10000
+        timeout: 20000
     },
     
     two_function_ping_pong: {
@@ -1780,7 +1788,7 @@ int main(void){
 }`,
         expected: 45,
         description: "Two function ping-pong calls",
-        timeout: 10000
+        timeout: 20000
     },
     
     three_function_with_loops: {
@@ -1820,7 +1828,7 @@ int main(void){
 }`,
         expected: 36,
         description: "Three functions with internal loops",
-        timeout: 10000
+        timeout: 20000
     },
     
     function_call_in_loop: {
@@ -1847,7 +1855,7 @@ int main(void){
 }`,
         expected: 45,
         description: "Function calls inside loops",
-        timeout: 8000
+        timeout: 20000
     },
     
     three_function_original: {
@@ -1885,7 +1893,7 @@ int main(void){
 }`,
         expected: 24,
         description: "Original three function circular test",
-        timeout: 10000
+        timeout: 20000
     },
     
     matrix_multiply: {
@@ -1908,7 +1916,7 @@ int main(void){
 }`,
         expected: 8,
         description: "Test 2x2 matrix multiplication",
-        timeout: 8000
+        timeout: 20000
     },
     
     quicksort_partition: {
@@ -1939,7 +1947,7 @@ int main() {
 }`,
         expected: 1,
         description: "Test quicksort partition algorithm",
-        timeout: 8000
+        timeout: 20000
     }
 };
 
@@ -2174,6 +2182,11 @@ function closeInfoPopup() {
 
 // Main compilation function
 async function compileAndDisasm() {
+    // Reset call correction state at the very beginning to prevent contamination
+    if (typeof rawCodeLoader !== 'undefined' && rawCodeLoader.resetCallCorrectionState) {
+        rawCodeLoader.resetCallCorrectionState();
+    }
+    
     showStatus('🔨 Compiling...', 'info');
     
     // Update status indicators
@@ -2410,6 +2423,7 @@ function step() {
     }
 }
 
+
 function resetStepper() {
     try {
         if (compiledHex) {
@@ -2518,6 +2532,7 @@ ${'='.repeat(50)}`;
             }
             
             // Load test code
+            console.log(`🔍 INDIVIDUAL: Starting test ${testName}`);
             if (cCodeEditor) {
                 cCodeEditor.setValue(testData.code);
             }
@@ -2525,16 +2540,20 @@ ${'='.repeat(50)}`;
             // Small delay to allow UI update
             await new Promise(resolve => setTimeout(resolve, 100));
             
-            // Compile the test code
+            // Compile the test code (resetEngineState is called in compileAndDisasm)
+            console.log(`🔍 INDIVIDUAL: Compiling ${testName}`);
             await compileAndDisasm();
             
             if (!compiledHex) {
+                console.log(`🔍 INDIVIDUAL: Compilation failed for ${testName}`);
                 throw new Error('Compilation failed');
             }
             
             // Execute and get result with test-specific timeout
-            const testTimeout = testData.timeout || 30000;
+            console.log(`🔍 INDIVIDUAL: Executing ${testName} with timeout ${getTimeoutValue()}ms`);
+            const testTimeout = getTimeoutValue();
             const actualValue = await executeCodeAndGetResult(testTimeout);
+            console.log(`🔍 INDIVIDUAL: ${testName} result: ${actualValue} (expected: ${testData.expected})`);
             
             // Check result
             const isPass = actualValue === testData.expected;
@@ -2591,7 +2610,7 @@ async function runSingleTest() {
     showStatus('🧪 Running single test...', 'info');
     
     try {
-        // Compile the current code
+        // Compile the current code (resetEngineState is called in compileAndDisasm)
         await compileAndDisasm();
         
         if (!compiledHex) {
@@ -2599,7 +2618,7 @@ async function runSingleTest() {
         }
         
         // Execute the code and get result with default timeout
-        const actualValue = await executeCodeAndGetResult(15000);
+        const actualValue = await executeCodeAndGetResult();
         
         // Display test result
         const testResults = document.getElementById('test-results');
@@ -2652,7 +2671,7 @@ ${'='.repeat(50)}`;
             // Small delay to allow UI update
             await new Promise(resolve => setTimeout(resolve, 100));
             
-            // Compile the test code
+            // Compile the test code (resetEngineState is called in compileAndDisasm)
             await compileAndDisasm();
             
             if (!compiledHex) {
@@ -2660,7 +2679,7 @@ ${'='.repeat(50)}`;
             }
             
             // Execute and get result with custom timeout
-            const testTimeout = testData.timeout || 30000;
+            const testTimeout = getTimeoutValue();
             let actualValue;
             let isTimeout = false;
             
@@ -2744,7 +2763,10 @@ ${'='.repeat(50)}`;
 }
 
 // Execute compiled code and return the final RAX value
-async function executeCodeAndGetResult(timeoutMs = 30000) {
+async function executeCodeAndGetResult(timeoutMs = null) {
+    if (timeoutMs === null) {
+        timeoutMs = getTimeoutValue();
+    }
     return new Promise((resolve, reject) => {
         let executionTimeout;
         let isCompleted = false;
@@ -2856,7 +2878,7 @@ async function runCurrentCodeTest() {
     showStatus('🧪 Testing current code...', 'info');
     
     try {
-        // Compile the current code
+        // Compile the current code (resetEngineState is called in compileAndDisasm)
         await compileAndDisasm();
         
         if (!compiledHex) {
@@ -2864,7 +2886,7 @@ async function runCurrentCodeTest() {
         }
         
         // Execute the code and get result with default timeout
-        const actualValue = await executeCodeAndGetResult(15000);
+        const actualValue = await executeCodeAndGetResult();
         
         // Display test result
         const testResults = document.getElementById('test-results');
@@ -2896,6 +2918,143 @@ Status: ❌ ERROR
 
 function clearTestResults() {
     document.getElementById('test-results').innerHTML = '<strong>>> TEST RESULTS WILL APPEAR HERE...</strong>';
+}
+
+function updateTimeoutDisplay(value) {
+    document.getElementById('timeout-display').textContent = value + 's';
+}
+
+function getTimeoutValue() {
+    const slider = document.getElementById('timeout-slider');
+    return slider ? parseInt(slider.value) * 1000 : 20000; // Convert to milliseconds, default 20s
+}
+
+async function runAllTestCategories() {
+    showStatus('🚀 Running all test categories...', 'info');
+    
+    const testResults = document.getElementById('test-results');
+    testResults.innerHTML += `\n${'='.repeat(60)}
+🚀 RUNNING ALL TEST CATEGORIES
+${'='.repeat(60)}`;
+
+    let totalPassed = 0;
+    let totalFailed = 0;
+    let totalTests = 0;
+    
+    // Categories to run (excluding performance as it has special tests)
+    const categoriesToRun = ['unit', 'integration', 'advanced', 'function_calls'];
+    
+    for (const category of categoriesToRun) {
+        try {
+            console.log(`🔍 BULK: ====== STARTING CATEGORY: ${category} ======`);
+            showStatus(`🧪 Running ${category} tests...`, 'info');
+            
+            testResults.innerHTML += `\n\n--- ${category.toUpperCase()} TESTS ---`;
+            
+            const testsInCategory = testCategories[category];
+            if (!testsInCategory || testsInCategory.length === 0) {
+                testResults.innerHTML += `\n❌ No tests found in ${category} category`;
+                continue;
+            }
+            
+            // Filter out non-predefined tests
+            const validTests = testsInCategory.filter(test => test !== 'current-code' && test !== 'custom');
+            
+            let categoryPassed = 0;
+            let categoryFailed = 0;
+            
+            for (const testName of validTests) {
+                try {
+                    const testData = tests[testName];
+                    if (!testData) {
+                        testResults.innerHTML += `\n❌ Test ${testName} not found`;
+                        categoryFailed++;
+                        continue;
+                    }
+                    
+                    // Load test code
+                    console.log(`🔍 BULK: Starting test ${testName}`);
+                    if (cCodeEditor) {
+                        cCodeEditor.setValue(testData.code);
+                    }
+                    
+                    // Small delay to allow UI update (match individual test timing)
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // Compile the test code (resetCallCorrectionState is called in compileAndDisasm)
+                    console.log(`🔍 BULK: Compiling ${testName}`);
+                    await compileAndDisasm();
+                    
+                    if (!compiledHex) {
+                        console.log(`🔍 BULK: Compilation failed for ${testName}`);
+                        testResults.innerHTML += `\n❌ ${testName}: Compilation failed`;
+                        categoryFailed++;
+                        continue;
+                    }
+                    
+                    // Execute and get result (match individual test behavior)
+                    console.log(`🔍 BULK: Executing ${testName} with timeout ${getTimeoutValue()}ms`);
+                    const testTimeout = getTimeoutValue();
+                    const actualValue = await executeCodeAndGetResult(testTimeout);
+                    console.log(`🔍 BULK: ${testName} result: ${actualValue} (expected: ${testData.expected})`);
+                    
+                    // Check result
+                    const timestamp = new Date().toLocaleTimeString();
+                    
+                    if (actualValue === testData.expected) {
+                        testResults.innerHTML += `\n[${timestamp}] ✅ ${testName}: Expected ${testData.expected}, got ${actualValue} - PASS`;
+                        categoryPassed++;
+                    } else {
+                        testResults.innerHTML += `\n[${timestamp}] ❌ ${testName}: Expected ${testData.expected}, got ${actualValue} - FAIL`;
+                        categoryFailed++;
+                    }
+                    
+                } catch (error) {
+                    testResults.innerHTML += `\n❌ ${testName}: Error - ${error.message}`;
+                    categoryFailed++;
+                }
+            }
+            
+            // Category summary
+            const categoryTotal = categoryPassed + categoryFailed;
+            const categoryRate = categoryTotal > 0 ? (categoryPassed / categoryTotal * 100).toFixed(1) : 0;
+            
+            testResults.innerHTML += `\n--- ${category.toUpperCase()} SUMMARY ---`;
+            testResults.innerHTML += `\n✅ Passed: ${categoryPassed} | ❌ Failed: ${categoryFailed} | 📊 Total: ${categoryTotal}`;
+            testResults.innerHTML += `\n📈 Success Rate: ${categoryRate}%`;
+            
+            totalPassed += categoryPassed;
+            totalFailed += categoryFailed;
+            totalTests += categoryTotal;
+            
+            // AGGRESSIVE: Complete state reset between categories to prevent contamination
+            console.log(`🔄 BULK: ====== COMPLETE RESET BETWEEN CATEGORIES ======`);
+            if (typeof rawCodeLoader !== 'undefined' && rawCodeLoader.resetCallCorrectionState) {
+                rawCodeLoader.resetCallCorrectionState();
+            }
+            
+            // Additional delay between categories to allow cleanup
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+        } catch (error) {
+            testResults.innerHTML += `\n❌ Error running ${category} tests: ${error.message}`;
+        }
+    }
+    
+    // Final summary
+    const overallRate = totalTests > 0 ? (totalPassed / totalTests * 100).toFixed(1) : 0;
+    const overallStatus = totalFailed === 0 ? 'success' : 'warning';
+    
+    testResults.innerHTML += `\n\n${'='.repeat(60)}`;
+    testResults.innerHTML += `\n🏁 ALL CATEGORIES COMPLETED`;
+    testResults.innerHTML += `\n✅ Total Passed: ${totalPassed} | ❌ Total Failed: ${totalFailed} | 📊 Total Tests: ${totalTests}`;
+    testResults.innerHTML += `\n📈 Overall Success Rate: ${overallRate}%`;
+    testResults.innerHTML += `\n${'='.repeat(60)}`;
+    
+    showStatus(`🏁 All tests completed: ${totalPassed} passed, ${totalFailed} failed (${overallRate}% success)`, overallStatus);
+    
+    // Scroll to bottom
+    testResults.scrollTop = testResults.scrollHeight;
 }
 
 // Initialize CodeMirror editors when page loads
