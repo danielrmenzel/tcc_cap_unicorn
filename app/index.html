@@ -808,6 +808,33 @@ int main() {
           <button class="control-btn" onclick="runAllTestsInCategory('function_calls')" style="padding:6px 10px;font-size:11px;width:100%">RUN ALL FUNCTION CALLS</button>
         </div>
         
+        <!-- Function Limits Tests Category -->
+        <div class="test-category">
+          <h4>
+            <span class="category-icon">📊</span>
+            Function Limits
+            <span id="function_limits-test-count" class="badge badge-info">7 tests</span>
+          </h4>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+            <select id="function_limits-test-dropdown" onchange="updateEditorFromDropdown('function_limits')" style="padding:8px; background:var(--bg-primary); color:var(--text-primary); border:2px solid var(--border-color); border-radius:0; min-width:180px; font-size:12px; font-family:inherit">
+              <option value="">Select function limit test...</option>
+              <optgroup label="✅ Working Tests">
+                <option value="function_limit_1">1 Function (Single main)</option>
+                <option value="function_limit_2">2 Functions (main + helper)</option>
+              </optgroup>
+              <optgroup label="🔍 Concurrent Call Tests">
+                <option value="function_limit_3">3 Functions (Concurrent calls)</option>
+                <option value="function_limit_4">4 Functions (Multi-concurrent)</option>
+                <option value="function_limit_5">5 Functions (Stress test)</option>
+                <option value="function_limit_6">6 Functions (Heavy load)</option>
+                <option value="function_limit_7">7 Functions (Maximum test)</option>
+              </optgroup>
+            </select>
+            <button class="control-btn" onclick="runSelectedTest('function_limits')" style="padding:6px 10px;font-size:11px">RUN</button>
+          </div>
+          <button class="control-btn" onclick="runAllTestsInCategory('function_limits')" style="padding:6px 10px;font-size:11px;width:100%">RUN ALL FUNCTION LIMITS</button>
+        </div>
+        
         <!-- Custom Test Category -->
         <div class="test-category">
           <h4>
@@ -1896,6 +1923,188 @@ int main(void){
         timeout: 20000
     },
     
+    // Function Limits Tests
+    function_limit_1: {
+        code: `int main() {
+    return 42;
+}`,
+        expected: 42,
+        description: "Single function test - should always work",
+        timeout: 5000
+    },
+    
+    function_limit_2: {
+        code: `int helper(int x) {
+    return x * 2;
+}
+
+int main() {
+    return helper(21);
+}`,
+        expected: 42,
+        description: "Two functions - should work (sequential call)",
+        timeout: 5000
+    },
+    
+    function_limit_3: {
+        code: `int add(int a, int b) {
+    return a + b;
+}
+
+int multiply(int a, int b) {
+    return a * b;
+}
+
+int main() {
+    int x = 10;
+    int y = 20;
+    int sum = add(x, y);
+    int product = multiply(x, y);
+    return sum + product;
+}`,
+        expected: 230,
+        description: "Three functions - concurrent calls from same scope",
+        timeout: 10000
+    },
+    
+    function_limit_4: {
+        code: `int add(int a, int b) {
+    return a + b;
+}
+
+int multiply(int a, int b) {
+    return a * b;
+}
+
+int subtract(int a, int b) {
+    return a - b;
+}
+
+int main() {
+    int x = 10;
+    int y = 20;
+    int sum = add(x, y);
+    int product = multiply(x, y);
+    int diff = subtract(x, y);
+    return sum + product + diff;
+}`,
+        expected: 220,
+        description: "Four functions - multiple concurrent calls",
+        timeout: 10000
+    },
+    
+    function_limit_5: {
+        code: `int add(int a, int b) {
+    return a + b;
+}
+
+int multiply(int a, int b) {
+    return a * b;
+}
+
+int subtract(int a, int b) {
+    return a - b;
+}
+
+int divide(int a, int b) {
+    return a / b;
+}
+
+int main() {
+    int x = 20;
+    int y = 10;
+    int sum = add(x, y);
+    int product = multiply(x, y);
+    int diff = subtract(x, y);
+    int quotient = divide(x, y);
+    return sum + product + diff + quotient;
+}`,
+        expected: 242,
+        description: "Five functions - stress test concurrent calls",
+        timeout: 15000
+    },
+    
+    function_limit_6: {
+        code: `int add(int a, int b) {
+    return a + b;
+}
+
+int multiply(int a, int b) {
+    return a * b;
+}
+
+int subtract(int a, int b) {
+    return a - b;
+}
+
+int divide(int a, int b) {
+    return a / b;
+}
+
+int modulo(int a, int b) {
+    return a % b;
+}
+
+int main() {
+    int x = 50;
+    int y = 10;
+    int sum = add(x, y);
+    int product = multiply(x, y);
+    int diff = subtract(x, y);
+    int quotient = divide(x, y);
+    int mod = modulo(x, y);
+    return sum + product + diff + quotient + mod;
+}`,
+        expected: 605,
+        description: "Six functions - heavy load concurrent calls",
+        timeout: 15000
+    },
+    
+    function_limit_7: {
+        code: `int add(int a, int b) {
+    return a + b;
+}
+
+int multiply(int a, int b) {
+    return a * b;
+}
+
+int subtract(int a, int b) {
+    return a - b;
+}
+
+int divide(int a, int b) {
+    return a / b;
+}
+
+int modulo(int a, int b) {
+    return a % b;
+}
+
+int power(int base, int exp) {
+    int result = 1;
+    for (int i = 0; i < exp; i++) {
+        result *= base;
+    }
+    return result;
+}
+
+int main() {
+    int x = 10;
+    int y = 3;
+    int sum = add(x, y);
+    int product = multiply(x, y);
+    int diff = subtract(x, y);
+    int quotient = divide(x, y);
+    int mod = modulo(x, y);
+    int pow = power(x, y);
+    return sum + product + diff + quotient + mod + pow;
+}`,
+        expected: 1050,
+        description: "Seven functions - maximum test concurrent calls",
+        timeout: 20000
+    },
+    
     matrix_multiply: {
         code: `int main() {
     int a[2][2] = {{1, 2}, {3, 4}};
@@ -2451,6 +2660,10 @@ const testCategories = {
     function_calls: [
         'five_function_cycle', 'four_function_cycle', 'two_function_ping_pong', 
         'three_function_with_loops', 'function_call_in_loop', 'three_function_original'
+    ],
+    function_limits: [
+        'function_limit_1', 'function_limit_2', 'function_limit_3', 'function_limit_4',
+        'function_limit_5', 'function_limit_6', 'function_limit_7'
     ]
 };
 
@@ -2942,7 +3155,7 @@ ${'='.repeat(60)}`;
     let totalTests = 0;
     
     // Categories to run (excluding performance as it has special tests)
-    const categoriesToRun = ['unit', 'integration', 'advanced', 'function_calls'];
+    const categoriesToRun = ['unit', 'integration', 'advanced', 'function_calls', 'function_limits'];
     
     for (const category of categoriesToRun) {
         try {
